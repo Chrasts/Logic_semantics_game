@@ -4,8 +4,6 @@ An interactive educational web application for constructing finite Kripke
 models, evaluating modal formulas, and exploring correspondence between modal
 axioms and relational frame properties.
 
-Current priorities and longer-term options are tracked in [`TODO.md`](TODO.md).
-
 ## Run locally
 
 Node.js 20 LTS or newer is required.

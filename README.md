@@ -1,8 +1,5 @@
 # Logic Model-Building Game
 
-Current implementation priorities and longer-term options are tracked in
-[`TODO.md`](TODO.md).
-
 Webová výuková hra, ve které hráč staví konečné Kripkeho modely splňující nebo
 vyvracející modální formule. Aktuálně jsou hotové první tři etapy: typované
 logické jádro, parser formulí, sandbox a první vizuální editor Kripkeho modelu.

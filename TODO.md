@@ -6,6 +6,9 @@ priority so that optional ideas do not complicate the first usable pilot.
 ## Next: verify and stabilize the sandbox
 
 - [x] Add an initial UI regression suite for world creation, undo, mode locking, frame properties, and parser errors.
+- [x] Add selected-world, model-wide, and finite-frame validity scopes.
+- [x] Add Validate/Enforce frame rules and Euclidean, serial, irreflexive, and acyclic checks.
+- [x] Add initial T, D, B, 4, and 5 correspondence presets.
 - [ ] Manually verify representative formulas and countermodels.
 - [ ] Expand tests for combinations of reflexive, symmetric, and transitive frames.
 - [ ] Add interaction tests for creating, moving, selecting, and deleting worlds and edges.
@@ -53,7 +56,7 @@ priority so that optional ideas do not complicate the first usable pilot.
 - [x] Undo and redo for graph edits.
 - [ ] Shareable model links or files.
 - [ ] Model presets and example formulas.
-- [ ] Serial and Euclidean frame validation.
+- [x] Serial and Euclidean frame validation.
 - [ ] Separate campaigns for K, T, S4, S5, and related systems.
 - [ ] Automatic layout for larger graphs.
 

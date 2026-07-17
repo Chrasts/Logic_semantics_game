@@ -17,11 +17,15 @@ import {
 import '@xyflow/react/dist/style.css'
 import {
   applyFrameProperties,
+  checkFrameProperty,
+  checkFrameValidity,
   createModel,
+  evaluateAtAllWorlds,
   evaluateWithExplanation,
   parseFormula,
   type AccessibilityEdge,
   type FrameProperties,
+  type FramePropertyName,
 } from './logic'
 
 interface EditableWorld {
@@ -44,12 +48,15 @@ type VerificationResult =
   | null
 
 type EditorMode = 'edit' | 'evaluate'
+type EvaluationScope = 'world' | 'model' | 'frame'
+type FrameRuleMode = 'off' | 'validate' | 'enforce'
+type FrameRules = Record<FramePropertyName, FrameRuleMode>
 
 interface ModelSnapshot {
   readonly worlds: EditableWorld[]
   readonly edges: EditableEdge[]
   readonly evaluationWorld: string
-  readonly frameProperties: FrameProperties
+  readonly frameRules: FrameRules
 }
 
 const initialWorlds: EditableWorld[] = [
@@ -60,6 +67,23 @@ const initialWorlds: EditableWorld[] = [
 const initialEdges: EditableEdge[] = [{ key: 0, from: 'w0', to: 'w1' }]
 const storageKey = 'logic-game:sandbox:v1'
 const explicitKeyFromFlowEdgeId = (id: string) => id.startsWith('explicit:') ? Number(id.slice(9)) : null
+const defaultFrameRules: FrameRules = {
+  reflexive: 'off',
+  symmetric: 'off',
+  transitive: 'off',
+  euclidean: 'off',
+  serial: 'off',
+  irreflexive: 'off',
+  acyclic: 'off',
+}
+
+const correspondencePresets = [
+  { id: 't', name: 'T — Reflexivity', formula: '□p → p', property: 'reflexive' as const },
+  { id: 'd', name: 'D — Seriality', formula: '□p → ◇p', property: 'serial' as const },
+  { id: 'b', name: 'B — Symmetry', formula: 'p → □◇p', property: 'symmetric' as const },
+  { id: '4', name: '4 — Transitivity', formula: '□p → □□p', property: 'transitive' as const },
+  { id: '5', name: '5 — Euclidean', formula: '◇p → □◇p', property: 'euclidean' as const },
+]
 
 interface SandboxDraft {
   readonly formulaSource: string
@@ -68,6 +92,8 @@ interface SandboxDraft {
   readonly evaluationWorld: string
   readonly targetTruth: boolean
   readonly frameProperties?: FrameProperties
+  readonly frameRules?: FrameRules
+  readonly evaluationScope?: EvaluationScope
 }
 
 function loadDraft(): SandboxDraft | null {
@@ -103,16 +129,25 @@ export function App() {
   const [edges, setEdges] = useState(initialDraft?.edges ?? initialEdges)
   const [evaluationWorld, setEvaluationWorld] = useState(initialDraft?.evaluationWorld ?? 'w0')
   const [targetTruth, setTargetTruth] = useState(initialDraft?.targetTruth ?? true)
-  const [frameProperties, setFrameProperties] = useState<FrameProperties>(initialDraft?.frameProperties ?? {
-    reflexive: false,
-    symmetric: false,
-    transitive: false,
+  const [evaluationScope, setEvaluationScope] = useState<EvaluationScope>(initialDraft?.evaluationScope ?? 'world')
+  const [frameRules, setFrameRules] = useState<FrameRules>(() => {
+    if (initialDraft?.frameRules) return { ...defaultFrameRules, ...initialDraft.frameRules }
+    const legacy = initialDraft?.frameProperties
+    return legacy ? {
+      ...defaultFrameRules,
+      reflexive: legacy.reflexive ? 'enforce' : 'off',
+      symmetric: legacy.symmetric ? 'enforce' : 'off',
+      transitive: legacy.transitive ? 'enforce' : 'off',
+      euclidean: legacy.euclidean ? 'enforce' : 'off',
+    } : defaultFrameRules
   })
   const [result, setResult] = useState<VerificationResult>(null)
   const [nextWorldKey, setNextWorldKey] = useState(() => Math.max(-1, ...worlds.map(({ key }) => key)) + 1)
   const [nextEdgeKey, setNextEdgeKey] = useState(() => Math.max(-1, ...edges.map(({ key }) => key)) + 1)
   const [selectedEdgeKey, setSelectedEdgeKey] = useState<number | null>(null)
   const [showHelp, setShowHelp] = useState(false)
+  const [showFrameRules, setShowFrameRules] = useState(false)
+  const [selectedCorrespondence, setSelectedCorrespondence] = useState('')
   const [editorMode, setEditorMode] = useState<EditorMode>('edit')
   const [showDerivedEdges, setShowDerivedEdges] = useState(true)
   const [leftPanelOpen, setLeftPanelOpen] = useState(true)
@@ -127,7 +162,7 @@ export function App() {
     worlds: structuredClone(worlds),
     edges: structuredClone(edges),
     evaluationWorld,
-    frameProperties: { ...frameProperties },
+    frameRules: { ...frameRules },
   })
 
   const saveHistoryPoint = () => {
@@ -141,7 +176,7 @@ export function App() {
     setWorlds(structuredClone(snapshot.worlds))
     setEdges(structuredClone(snapshot.edges))
     setEvaluationWorld(snapshot.evaluationWorld)
-    setFrameProperties({ ...snapshot.frameProperties })
+    setFrameRules({ ...snapshot.frameRules })
     setSelectedWorldKey(null)
     setResult(null)
   }
@@ -163,9 +198,9 @@ export function App() {
   }
 
   useEffect(() => {
-    const draft: SandboxDraft = { formulaSource, worlds, edges, evaluationWorld, targetTruth, frameProperties }
+    const draft: SandboxDraft = { formulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
     localStorage.setItem(storageKey, JSON.stringify(draft))
-  }, [formulaSource, worlds, edges, evaluationWorld, targetTruth, frameProperties])
+  }, [formulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope])
 
   const usableWorldIds = useMemo(
     () => worlds.map(({ id }) => id.trim()).filter((id, index, ids) => id && ids.indexOf(id) === index),
@@ -173,8 +208,20 @@ export function App() {
   )
 
   const effectiveEdges = useMemo(
-    () => applyFrameProperties(usableWorldIds, edges, frameProperties),
-    [usableWorldIds, edges, frameProperties],
+    () => applyFrameProperties(usableWorldIds, edges, {
+      reflexive: frameRules.reflexive === 'enforce',
+      symmetric: frameRules.symmetric === 'enforce',
+      transitive: frameRules.transitive === 'enforce',
+      euclidean: frameRules.euclidean === 'enforce',
+    }),
+    [usableWorldIds, edges, frameRules],
+  )
+
+  const frameRuleResults = useMemo(
+    () => Object.entries(frameRules)
+      .filter(([, mode]) => mode !== 'off')
+      .map(([property]) => checkFrameProperty(usableWorldIds, effectiveEdges, property as FramePropertyName)),
+    [frameRules, usableWorldIds, effectiveEdges],
   )
 
   const explicitEdgeKeyByPair = useMemo(
@@ -358,38 +405,85 @@ export function App() {
     setEdges(initialEdges)
     setEvaluationWorld('w0')
     setTargetTruth(true)
-    setFrameProperties({ reflexive: false, symmetric: false, transitive: false })
+    setFrameRules(defaultFrameRules)
+    setEvaluationScope('world')
+    setSelectedCorrespondence('')
     setNextWorldKey(2)
     setNextEdgeKey(1)
     setSelectedEdgeKey(null)
     setResult(null)
   }
 
+  const loadCorrespondencePreset = (presetId: string) => {
+    setSelectedCorrespondence(presetId)
+    const preset = correspondencePresets.find(({ id }) => id === presetId)
+    if (!preset) return
+    saveHistoryPoint()
+    setFormulaSource(preset.formula)
+    setEvaluationScope('frame')
+    setTargetTruth(true)
+    setFrameRules((current) => ({ ...current, [preset.property]: 'validate' }))
+    setResult(null)
+  }
+
   const verify = () => {
     try {
       const ids = worlds.map(({ id }) => id.trim())
+      if (ids.length === 0) throw new Error('Add at least one world before verification.')
       if (ids.some((id) => !id)) throw new Error('Every world must have a name.')
       if (new Set(ids).size !== ids.length) throw new Error('World names must be unique.')
-      if (!ids.includes(evaluationWorld)) throw new Error('Select an existing evaluation world.')
+      if (evaluationScope === 'world' && !ids.includes(evaluationWorld)) throw new Error('Select an existing evaluation world.')
+
+      const failedRule = frameRuleResults.find((result) => !result.holds)
+      if (failedRule) {
+        setResult({
+          kind: 'failure',
+          message: `The frame is not ${failedRule.property}.`,
+          detail: failedRule.violations[0] ?? 'The selected frame rule is violated.',
+        })
+        return
+      }
 
       const valuations = Object.fromEntries(worlds.map(({ id, atoms }) => [
         id.trim(),
         atoms.split(/[\s,]+/u).map((value) => value.trim()).filter(Boolean),
       ]))
       const normalizedEdges: AccessibilityEdge[] = effectiveEdges.map(({ from, to }) => ({ from, to }))
-      const evaluation = evaluateWithExplanation(
-        createModel(valuations, normalizedEdges),
-        evaluationWorld,
-        parseFormula(formulaSource),
-      )
-      const matches = evaluation.value === targetTruth
-      setResult({
-        kind: matches ? 'success' : 'failure',
-        message: matches
-          ? `Goal met: the formula is ${evaluation.value ? 'true' : 'false'} at ${evaluationWorld}.`
-          : `Goal not met: the formula is ${evaluation.value ? 'true' : 'false'} at ${evaluationWorld}.`,
-        detail: evaluation.explanation,
-      })
+      const formula = parseFormula(formulaSource)
+      if (evaluationScope === 'world') {
+        const evaluation = evaluateWithExplanation(createModel(valuations, normalizedEdges), evaluationWorld, formula)
+        const matches = evaluation.value === targetTruth
+        setResult({
+          kind: matches ? 'success' : 'failure',
+          message: `${matches ? 'Goal met' : 'Goal not met'}: the formula is ${evaluation.value ? 'true' : 'false'} at ${evaluationWorld}.`,
+          detail: evaluation.explanation,
+        })
+      } else if (evaluationScope === 'model') {
+        const evaluation = evaluateAtAllWorlds(createModel(valuations, normalizedEdges), formula)
+        const matches = evaluation.valid === targetTruth
+        setResult({
+          kind: matches ? 'success' : 'failure',
+          message: `${matches ? 'Goal met' : 'Goal not met'}: the formula is ${evaluation.valid ? 'true at every world' : 'false at some world'} under the current valuation.`,
+          detail: evaluation.counterexample
+            ? `Counterexample at ${evaluation.counterexample.worldId}. ${evaluation.counterexample.explanation.explanation}`
+            : `The formula is true at all ${ids.length} worlds.`,
+        })
+      } else {
+        const evaluation = checkFrameValidity(ids, normalizedEdges, formula)
+        const matches = evaluation.valid === targetTruth
+        const counterValuation = evaluation.counterexample
+          ? Object.entries(evaluation.counterexample.valuation)
+            .map(([world, atoms]) => `${world}: ${atoms.length ? `{${atoms.join(', ')}}` : '∅'}`)
+            .join('; ')
+          : ''
+        setResult({
+          kind: matches ? 'success' : 'failure',
+          message: `${matches ? 'Goal met' : 'Goal not met'}: the formula is ${evaluation.valid ? 'valid' : 'not valid'} on this frame.`,
+          detail: evaluation.counterexample
+            ? `Countervaluation found at ${evaluation.counterexample.worldId}: ${counterValuation}. ${evaluation.counterexample.explanation.explanation}`
+            : `Checked all ${evaluation.checkedValuations.toLocaleString('en-US')} valuations at every world.`,
+        })
+      }
     } catch (error) {
       setResult({ kind: 'error', message: error instanceof Error ? error.message : 'Verification failed.' })
     }
@@ -426,30 +520,17 @@ export function App() {
           </div>
           <fieldset className="target-choice">
             <legend>Construction goal</legend>
-            <label><input type="radio" checked={targetTruth} onChange={() => { setTargetTruth(true); setResult(null) }} /> Make it true</label>
-            <label><input type="radio" checked={!targetTruth} onChange={() => { setTargetTruth(false); setResult(null) }} /> Build a countermodel</label>
+            <label><input type="radio" checked={targetTruth} onChange={() => { setTargetTruth(true); setResult(null) }} /> {evaluationScope === 'frame' ? 'Valid on frame' : 'Make it true'}</label>
+            <label><input type="radio" checked={!targetTruth} onChange={() => { setTargetTruth(false); setResult(null) }} /> {evaluationScope === 'frame' ? 'Find countervaluation' : 'Build a countermodel'}</label>
           </fieldset>
-          <fieldset className="frame-properties">
-            <legend>Global frame properties</legend>
-            {([
-              ['reflexive', 'Reflexive', 'wRw for every world'],
-              ['symmetric', 'Symmetric', 'wRv ⇒ vRw'],
-              ['transitive', 'Transitive', 'wRv ∧ vRu ⇒ wRu'],
-            ] as const).map(([property, label, description]) => (
-              <label key={property}>
-                <input
-                  type="checkbox"
-                  checked={frameProperties[property]}
-                  onChange={(event) => {
-                    saveHistoryPoint()
-                    setFrameProperties((current) => ({ ...current, [property]: event.target.checked }))
-                    setResult(null)
-                  }}
-                />
-                <span><strong>{label}</strong><small>{description}</small></span>
-              </label>
-            ))}
-          </fieldset>
+          <label className="field correspondence-picker">
+            <span>Correspondence lab</span>
+            <select value={selectedCorrespondence} onChange={(event) => loadCorrespondencePreset(event.target.value)}>
+              <option value="">Choose an axiom preset</option>
+              {correspondencePresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+            </select>
+          </label>
+          {selectedCorrespondence && <p className="correspondence-note">Compare frame validity with the selected relational property. Finite examples provide evidence; they do not replace the general correspondence proof.</p>}
           <p className="notation">Precedence: ¬ □ ◇ &gt; ∧ &gt; ∨ &gt; →. Alternatives: !, &amp;, |, -&gt;, box, diamond.</p>
         </div>
 
@@ -504,6 +585,7 @@ export function App() {
                 <button type="button" onClick={addWorld} disabled={editorMode !== 'edit'}>+ World</button>
                 <button type="button" onClick={() => flowInstance?.fitView({ padding: .25, duration: 250 })}>Fit view</button>
                 <button type="button" className={!showDerivedEdges ? 'muted' : ''} onClick={() => setShowDerivedEdges((show) => !show)}>{showDerivedEdges ? 'Hide' : 'Show'} derived</button>
+                <button type="button" className="frame-rules-button" onClick={() => setShowFrameRules(true)}>Frame rules{frameRuleResults.length ? ` (${frameRuleResults.length})` : ''}</button>
                 {editorMode === 'evaluate' && <button type="button" className="toolbar-verify" onClick={verify}>Verify</button>}
               </Panel>
               {worlds.length === 0 && (
@@ -594,11 +676,19 @@ export function App() {
         <div className="panel verify-panel">
           <div className="panel-heading">
             <span className="step">05</span>
-            <div><h2>Verification</h2><p>Choose an evaluation world</p></div>
+            <div><h2>Verification</h2><p>Choose the semantic scope</p></div>
           </div>
+          <label className="field scope-field">
+            <span>Evaluation scope</span>
+            <select value={evaluationScope} onChange={(event) => { setEvaluationScope(event.target.value as EvaluationScope); setResult(null) }}>
+              <option value="world">Selected world and current valuation</option>
+              <option value="model">All worlds, current valuation</option>
+              <option value="frame">All worlds and all valuations</option>
+            </select>
+          </label>
           <label className="field">
             <span>Evaluation world</span>
-            <select value={evaluationWorld} onChange={(event) => { setEvaluationWorld(event.target.value); setResult(null) }}>
+            <select disabled={evaluationScope !== 'world'} value={evaluationWorld} onChange={(event) => { setEvaluationWorld(event.target.value); setResult(null) }}>
               <option value="">Select a world</option>{usableWorldIds.map((id) => <option key={id}>{id}</option>)}
             </select>
           </label>
@@ -609,6 +699,50 @@ export function App() {
           </div>
         </div>
       </section>
+
+      {showFrameRules && (
+        <div className="dialog-backdrop" role="presentation" onMouseDown={() => setShowFrameRules(false)}>
+          <section className="help-dialog frame-rules-dialog" role="dialog" aria-modal="true" aria-labelledby="frame-rules-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="dialog-heading">
+              <div><p className="eyebrow">Accessibility relation</p><h2 id="frame-rules-title">Frame rules</h2></div>
+              <button type="button" className="dialog-close" onClick={() => setShowFrameRules(false)} aria-label="Close frame rules">×</button>
+            </div>
+            <p className="dialog-intro"><strong>Validate</strong> checks your relation without changing it. <strong>Enforce</strong> computes the least closure and displays generated edges as dashed lines.</p>
+            <div className="frame-rule-grid">
+              {([
+                ['reflexive', 'Reflexive', 'wRw for every world', true],
+                ['symmetric', 'Symmetric', 'wRv implies vRw', true],
+                ['transitive', 'Transitive', 'wRv and vRu imply wRu', true],
+                ['euclidean', 'Euclidean', 'wRv and wRu imply vRu', true],
+                ['serial', 'Serial', 'Every world has a successor', false],
+                ['irreflexive', 'Irreflexive', 'No world accesses itself', false],
+                ['acyclic', 'Acyclic', 'The relation has no directed cycle', false],
+              ] as const).map(([property, name, description, canEnforce]) => {
+                const status = frameRuleResults.find((result) => result.property === property)
+                return (
+                  <div className="frame-rule-card" key={property}>
+                    <div><strong>{name}</strong><span>{description}</span></div>
+                    <select
+                      aria-label={`${name} rule mode`}
+                      value={frameRules[property]}
+                      onChange={(event) => {
+                        saveHistoryPoint()
+                        setFrameRules((current) => ({ ...current, [property]: event.target.value as FrameRuleMode }))
+                        setResult(null)
+                      }}
+                    >
+                      <option value="off">Off</option>
+                      <option value="validate">Validate</option>
+                      {canEnforce && <option value="enforce">Enforce</option>}
+                    </select>
+                    {status && <span className={`rule-status ${status.holds ? 'pass' : 'fail'}`}>{status.holds ? 'Pass' : status.violations[0]}</span>}
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        </div>
+      )}
 
       {showHelp && (
         <div className="dialog-backdrop" role="presentation" onMouseDown={() => setShowHelp(false)}>
@@ -622,7 +756,9 @@ export function App() {
               <div><h3>Editor modes</h3><p>Edit mode unlocks construction tools. Evaluate mode locks the graph against accidental changes and keeps verification close at hand.</p></div>
               <div><h3>Edit and delete</h3><p>Edit names and valuations in the side panel. Double-click an explicit edge, or select it and use the delete button.</p></div>
               <div><h3>Legend</h3><p><span className="legend-swatch petrol" /> Evaluation world<br /><span className="legend-line" /> Explicit edge<br /><span className="legend-line derived" /> Edge derived from frame properties<br /><span className="legend-reflexive">↻</span> Reflexive relation wRw</p></div>
-              <div><h3>Frame properties</h3><p>Reflexive, symmetric, and transitive options compute the least closure of your explicit relation. Derived edges disappear when the option is disabled.</p></div>
+              <div><h3>Verification scopes</h3><p>Check one world, every world under the current valuation, or frame validity across every valuation of the formula's atoms.</p></div>
+              <div><h3>Frame rules</h3><p>Validate checks a property without editing the relation. Enforce computes reflexive, symmetric, transitive, or Euclidean closure. Serial, irreflexive, and acyclic rules are validation-only.</p></div>
+              <div><h3>Correspondence lab</h3><p>Load standard T, D, B, 4, and 5 axiom presets to compare finite-frame validity with their characteristic relational properties.</p></div>
               <div><h3>Formula notation</h3><p>Use ¬, ∧, ∨, →, □, ◇ or the alternatives !, &amp;, |, -&gt;, box, diamond.</p></div>
               <div><h3>Storage</h3><p>Your sandbox is saved only in this browser. Reset model restores the initial example.</p></div>
               <div><h3>Workspace</h3><p>Use the top-bar controls to undo or redo model edits and collapse either side of the workspace. The map toolbar can fit the graph or hide derived edges.</p></div>

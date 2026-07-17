@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyFrameProperties, type FrameProperties } from './frame'
+import { applyFrameProperties, checkFrameProperty, type FrameProperties } from './frame'
 
 const none: FrameProperties = { reflexive: false, symmetric: false, transitive: false }
 const pairs = (edges: readonly { from: string; to: string }[]) => edges.map(({ from, to }) => `${from}${to}`).sort()
@@ -34,5 +34,26 @@ describe('frame-property closure', () => {
     )
     expect(pairs(result)).toEqual(['aa', 'ab', 'ac', 'ba', 'bb', 'bc', 'ca', 'cb', 'cc'])
   })
+
+  it('computes Euclidean closure', () => {
+    const result = applyFrameProperties(
+      ['a', 'b', 'c'],
+      [{ from: 'a', to: 'b' }, { from: 'a', to: 'c' }],
+      { ...none, euclidean: true },
+    )
+    expect(pairs(result)).toEqual(['ab', 'ac', 'bb', 'bc', 'cb', 'cc'])
+  })
 })
 
+describe('frame-property validation', () => {
+  it('checks serial and irreflexive frames', () => {
+    const edge = [{ from: 'a', to: 'b' }, { from: 'b', to: 'a' }]
+    expect(checkFrameProperty(['a', 'b'], edge, 'serial').holds).toBe(true)
+    expect(checkFrameProperty(['a', 'b'], edge, 'irreflexive').holds).toBe(true)
+  })
+
+  it('detects directed cycles', () => {
+    expect(checkFrameProperty(['a', 'b'], [{ from: 'a', to: 'b' }, { from: 'b', to: 'a' }], 'acyclic').holds).toBe(false)
+    expect(checkFrameProperty(['a', 'b'], [{ from: 'a', to: 'b' }], 'acyclic').holds).toBe(true)
+  })
+})

@@ -1,102 +1,108 @@
 # Logic Model-Building Game
 
-Current implementation priorities and longer-term options are tracked in
-[`TODO.md`](TODO.md).
+An interactive educational web application for constructing finite Kripke
+models, evaluating modal formulas, and exploring correspondence between modal
+axioms and relational frame properties.
 
-Webová výuková hra, ve které hráč staví konečné Kripkeho modely splňující nebo
-vyvracející modální formule. Aktuálně jsou hotové první tři etapy: typované
-logické jádro, parser formulí, sandbox a první vizuální editor Kripkeho modelu.
-Kampaň přijde v dalších etapách.
+Current priorities and longer-term options are tracked in [`TODO.md`](TODO.md).
 
-## Požadavky a spuštění
+## Run locally
 
-Je potřeba Node.js 20 LTS nebo novější (včetně npm).
+Node.js 20 LTS or newer is required.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Vite vypíše lokální adresu aplikace. Další příkazy:
+Vite prints the local application URL. On Windows PowerShell installations that
+block `npm.ps1`, use `npm.cmd` instead of `npm`.
 
 ```bash
-npm test          # jednorázově spustí unit testy
-npm run test:watch # spouští testy při změnách
-npm run build     # provede typovou kontrolu a produkční build
+npm test           # run all core and UI tests once
+npm run test:watch # rerun tests while files change
+npm run build      # type-check and build the production application
 ```
 
-## Struktura
+## Current features
+
+- Visual construction of finite Kripke frames with React Flow.
+- Editable worlds, valuations, accessibility edges, and evaluation world.
+- Modal formula parser supporting `¬`, `∧`, `∨`, `→`, `□`, and `◇`.
+- Text alternatives: `!`, `&`, `|`, `->`, `box`, and `diamond`.
+- Deterministic evaluation with human-readable explanations.
+- Verification at one selected world.
+- Verification at every world under the current valuation.
+- Finite-frame validity across every valuation of the atoms in a formula.
+- Counterexample worlds and countervaluations when verification fails.
+- Reflexive, symmetric, transitive, and Euclidean closure.
+- Validation of reflexive, symmetric, transitive, Euclidean, serial,
+  irreflexive, and acyclic frames.
+- Correspondence presets for modal axioms T, D, B, 4, and 5.
+- Edit and Evaluate modes, undo/redo, collapsible panels, and local persistence.
+- Core logic and UI regression tests with Vitest and Testing Library.
+
+## Mathematical conventions
+
+A finite Kripke model is `M = (W, R, V)`, where `W` is a finite set of worlds,
+`R` is a binary accessibility relation, and `V` assigns a set of true atoms to
+each world.
+
+- `M,w ⊨ p` exactly when `p ∈ V(w)`.
+- Boolean connectives use standard classical semantics.
+- `M,w ⊨ □φ` exactly when `φ` holds at every world accessible from `w`.
+- `M,w ⊨ ◇φ` exactly when `φ` holds at some world accessible from `w`.
+- `□φ` is vacuously true and `◇φ` is false at a world with no successors.
+
+The parser uses precedence `¬/□/◇` > `∧` > `∨` > `→`. Implication is
+right-associative, and parentheses override precedence.
+
+The application distinguishes three semantic scopes:
+
+- `M,w ⊨ φ`: one selected world under the current valuation;
+- `M ⊨ φ`: every world under the current valuation;
+- `F ⊨ φ`: every world under every valuation on a finite frame.
+
+Finite-frame validity is checked by exhaustive valuation enumeration. Its cost
+is exponential in the number of worlds and distinct atoms, so the UI enforces a
+safety limit and reports when a request is too large.
+
+## Frame rules
+
+Explicit edges are the relation entered by the user. A frame rule can be:
+
+- **Off** — ignored;
+- **Validate** — checked without modifying the relation;
+- **Enforce** — completed with the least closure and displayed as derived,
+  dashed edges.
+
+Reflexivity, symmetry, transitivity, and Euclideanness support enforcement.
+Seriality, irreflexivity, and acyclicity are validation-only because automatic
+repair would require arbitrary choices or deletion of explicit user data.
+
+## Project structure
 
 ```text
 src/
 ├── logic/
-│   ├── formula.ts       # typovaný AST modálních formulí
-│   ├── model.ts         # konečný Kripkeho model M = (W, R, V)
-│   ├── evaluate.ts      # deterministická sémantika M,w ⊨ φ
-│   ├── parser.ts        # tokenizer a parser textových formulí
-│   ├── evaluate.test.ts # testy sémantiky
-│   └── parser.test.ts   # testy syntaxe a integrace s evaluátorem
-├── App.tsx              # formulářový sandbox
-└── main.tsx             # vstup React aplikace
+│   ├── formula.ts       # typed modal-formula AST
+│   ├── parser.ts        # tokenizer and precedence parser
+│   ├── model.ts         # finite Kripke models
+│   ├── evaluate.ts      # deterministic local semantics and explanations
+│   ├── validity.ts      # model-wide and finite-frame validity
+│   └── frame.ts         # frame closure and property validation
+├── test/                # shared UI test setup
+├── App.tsx              # interactive sandbox
+└── main.tsx             # React entry point
 ```
 
-Logické jádro nemá závislost na Reactu. Díky tomu zůstává snadno testovatelné a
-později je lze používat v sandboxu i kampani.
+The logic core has no dependency on React or React Flow.
 
-## Matematické konvence
+## Current scope
 
-Konečný Kripkeho model je `M = (W, R, V)`, kde `W` je konečná množina světů,
-`R` je orientovaná relace dostupnosti a `V` přiřazuje každému světu množinu
-atomů, které v něm platí.
+The pilot intentionally has no backend, database, AI validator, external
+solver, or proof of model minimality. Infinite Kripke models are deferred until
+a precise regular representation and semantics are specified.
 
-- `M,w ⊨ p` právě když `p ∈ V(w)`.
-- Booleovské spojky mají standardní klasickou sémantiku.
-- `M,w ⊨ □φ` právě když `φ` platí ve všech světech dostupných z `w`.
-- `M,w ⊨ ◇φ` právě když `φ` platí alespoň v jednom světě dostupném z `w`.
-- Ve světě bez následníků je `□φ` vakuózně pravdivé a `◇φ` nepravdivé.
-- Reflexivní hrany, cykly a větvení jsou povolené.
-
-Parser přijímá symboly `¬`, `∧`, `∨`, `→`, `□`, `◇` i textové alternativy
-`!`, `&`, `|`, `->`, `box`, `diamond`. Priorita operátorů je
-`¬/□/◇` > `∧` > `∨` > `→`; implikace je pravostranně asociativní. Závorkami
-lze prioritu přepsat.
-
-Sandbox umožňuje zadat formuli, vytvořit a odstranit světy, upravit jejich
-valuace, přidat orientované hrany, zvolit hodnoticí svět a určit, zda má být
-výsledkem model, nebo kontramodel. Výsledek kontroluje výhradně deterministické
-logické jádro. Evaluator zároveň podává stručné deterministické vysvětlení —
-například ukáže svět, který je svědkem `◇`, nebo protipříkladem pro `□`.
-Rozehraný sandbox se automaticky ukládá do `localStorage` daného prohlížeče;
-žádná data se neposílají na server.
-
-Vizuální editor používá React Flow. Světy lze přesouvat po ploše a vytvářet
-orientované relace tažením mezi jejich spojovacími body. Přesný název světa,
-valuace a seznam hran zůstávají upravitelné také formulářem. Grafická vrstva je
-oddělená od logického jádra a neúčastní se rozhodování o pravdivosti.
-
-Editor nabízí režimy Edit/Evaluate, kontextovou kartu vybraného světa, undo a
-redo, sbalitelné boční panely a mapový toolbar pro přizpůsobení pohledu nebo
-skrytí odvozených hran.
-
-Sandbox podporuje globální podmínky reflexivity, symetrie a tranzitivity.
-Ručně zadané hrany tvoří základ relace a aplikace nad nimi deterministicky
-spočítá nejmenší odpovídající uzávěr. Odvozené hrany jsou v grafu čárkované;
-reflexivita je kvůli přehlednosti označena symbolem `↻` přímo u světa.
-
-Nekonečné modely zatím podporované nejsou. Jejich budoucí reprezentace musí
-nejprve přesně určit regulární strukturu a valuace; pouhá grafická značka
-nekonečné větve by pro jednoznačnou sémantiku nestačila.
-
-## Rozsah první etapy
-
-Projekt úmyslně zatím neobsahuje backend, databázi, AI API, solver, grafický
-editor, kampaň ani ukládání postupu. Aktuální produktový kontext je v souboru
-`logic_model_building_game_kontext.txt`.
-
-## Stav etap
-
-- Etapa 1 — logické jádro: hotovo.
-- Etapa 2 — parser formulí: hotovo.
-- Etapa 3 — jednoduchý sandbox: hotovo.
-- Etapa 4 — první vizuální editor: hotovo, čeká na praktické UX ověření.
-- Etapy 5–6 — kampaň, doladění a nasazení: později.
+The next major product stage is a campaign built on the verified sandbox and
+correspondence tools.

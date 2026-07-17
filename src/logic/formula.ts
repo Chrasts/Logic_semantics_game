@@ -47,3 +47,20 @@ export function formatFormula(formula: Formula, parentPrecedence = 0): string {
 
   return ownPrecedence < parentPrecedence ? `(${formatted})` : formatted
 }
+
+export function collectAtoms(formula: Formula): readonly string[] {
+  const names = new Set<string>()
+  const visit = (current: Formula): void => {
+    switch (current.kind) {
+      case 'atom': names.add(current.name); break
+      case 'not':
+      case 'box':
+      case 'diamond': visit(current.operand); break
+      case 'and':
+      case 'or':
+      case 'implies': visit(current.left); visit(current.right); break
+    }
+  }
+  visit(formula)
+  return [...names].sort()
+}

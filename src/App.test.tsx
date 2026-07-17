@@ -41,8 +41,9 @@ describe('sandbox user interface', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.click(screen.getByRole('checkbox', { name: /Reflexive/ }))
-    expect(screen.getByRole('checkbox', { name: /Reflexive/ })).toBeChecked()
+    await user.click(screen.getByRole('button', { name: /^Frame rules/ }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Reflexive rule mode' }), 'enforce')
+    expect(screen.getByRole('combobox', { name: 'Reflexive rule mode' })).toHaveValue('enforce')
     expect(screen.getByText(/2 edges derived from frame properties/)).toBeVisible()
   })
 
@@ -53,5 +54,24 @@ describe('sandbox user interface', () => {
     await user.clear(screen.getByLabelText('Modal formula'))
     await user.click(screen.getByRole('button', { name: 'Verify model' }))
     expect(screen.getByText(/Expected a formula, but the input ended/)).toBeVisible()
+  })
+
+  it('checks all valuations and returns a frame counterexample', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.selectOptions(screen.getByLabelText('Evaluation scope'), 'frame')
+    await user.click(screen.getByRole('button', { name: 'Verify model' }))
+    expect(screen.getByText(/the formula is not valid on this frame/i)).toBeVisible()
+    expect(screen.getByText(/Countervaluation found/)).toBeVisible()
+  })
+
+  it('loads a modal correspondence preset', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.selectOptions(screen.getByLabelText('Correspondence lab'), 't')
+    expect(screen.getByLabelText('Modal formula')).toHaveValue('□p → p')
+    expect(screen.getByLabelText('Evaluation scope')).toHaveValue('frame')
   })
 })

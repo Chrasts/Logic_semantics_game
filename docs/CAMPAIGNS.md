@@ -66,6 +66,13 @@ and their agreement on the current finite frame.
 5. **5 and Euclideanness** — `◇p → □◇p`.
 6. **5 on a larger cluster** — complete Euclidean closure for three accessible
    alternatives.
+7. **Break reflexivity** — remove a reflexive loop and observe both T validity
+   and reflexivity fail.
+8. **Break symmetry** — turn a two-way relation into a one-way edge and expose
+   the failure of B.
+9. **Break transitivity** — retain a two-step path while removing its shortcut.
+10. **Break Euclideanness** — reduce a Euclidean cluster to a non-Euclidean
+    fork and expose the failure of axiom 5.
 
 Agreement on a finite frame is an instance verification, not a proof of the
 general characteristic-class theorem.

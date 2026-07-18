@@ -256,6 +256,26 @@ export const campaignTracks: readonly CampaignTrack[] = [
         worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 35 } }, { id: 'w1', atoms: 'p', position: { x: 40, y: 230 } }, { id: 'w2', atoms: '', position: { x: 245, y: 270 } }, { id: 'w3', atoms: '', position: { x: 450, y: 230 } }],
         edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w0', to: 'w3' }], frameRules: { euclidean: 'validate' }, constraints: { minimumWorlds: 4, maximumWorlds: 4, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w0', to: 'w3' }], maximumEdges: 12 }, editable: ['edges'],
       },
+      {
+        id: 'correspondence-break-t', chapter: 'Correspondence', title: 'Break reflexivity', concept: 'A failed frame condition produces a countervaluation to T',
+        instruction: 'Remove one loop so the frame is not reflexive and T is not valid.', formula: '□p → p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: 't',
+        worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }], edges: [{ from: 'w0', to: 'w0' }, { from: 'w1', to: 'w1' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 1, forbiddenProperties: ['reflexive'] }, editable: ['edges'],
+      },
+      {
+        id: 'correspondence-break-b', chapter: 'Correspondence', title: 'Break symmetry', concept: 'A one-way edge produces a countervaluation to B',
+        instruction: 'Remove the reverse edge so the frame is not symmetric and B is not valid.', formula: 'p → □◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: 'b',
+        worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }], edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w0' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, requiredEdges: [{ from: 'w0', to: 'w1' }], maximumEdges: 1, forbiddenProperties: ['symmetric'] }, editable: ['edges'],
+      },
+      {
+        id: 'correspondence-break-four', chapter: 'Correspondence', title: 'Break transitivity', concept: 'A missing shortcut produces a countervaluation to 4',
+        instruction: 'Remove the shortcut while retaining the path so transitivity and axiom 4 both fail.', formula: '□p → □□p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: '4',
+        worlds: [{ id: 'w0', atoms: '', position: { x: 70, y: 130 } }, { id: 'w1', atoms: '', position: { x: 260, y: 130 } }, { id: 'w2', atoms: 'p', position: { x: 450, y: 130 } }], edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }, { from: 'w0', to: 'w2' }], constraints: { minimumWorlds: 3, maximumWorlds: 3, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }], maximumEdges: 2, forbiddenProperties: ['transitive'] }, editable: ['edges'],
+      },
+      {
+        id: 'correspondence-break-five', chapter: 'Correspondence', title: 'Break Euclideanness', concept: 'A bare fork produces a countervaluation to 5',
+        instruction: 'Remove the cluster edges while retaining the fork so Euclideanness and axiom 5 both fail.', formula: '◇p → □◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: '5',
+        worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 70 } }, { id: 'w1', atoms: 'p', position: { x: 90, y: 230 } }, { id: 'w2', atoms: '', position: { x: 400, y: 230 } }], edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w1', to: 'w1' }, { from: 'w1', to: 'w2' }, { from: 'w2', to: 'w1' }, { from: 'w2', to: 'w2' }], constraints: { minimumWorlds: 3, maximumWorlds: 3, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], maximumEdges: 2, forbiddenProperties: ['euclidean'] }, editable: ['edges'],
+      },
     ],
   },
 ]

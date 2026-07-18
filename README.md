@@ -42,7 +42,7 @@ model-building recap.
 
 ### Campaigns
 
-Five campaigns contain 22 missions organized by objective type:
+Five campaigns contain 26 missions organized by objective type:
 
 - Local Models & Countermodels
 - Global Model Building

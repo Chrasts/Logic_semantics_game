@@ -51,7 +51,7 @@ describe('campaign level solvability', () => {
   it('defines five tracks and unique level identifiers', () => {
     const ids = campaignTracks.flatMap((track) => track.levels.map((item) => item.id))
     expect(campaignTracks).toHaveLength(5)
-    expect(ids).toHaveLength(22)
+    expect(ids).toHaveLength(26)
     expect(new Set(ids).size).toBe(ids.length)
     expect(campaignTracks.flatMap((track) => track.levels).filter((item) => item.bonusConstraints).length).toBeGreaterThanOrEqual(3)
   })
@@ -98,7 +98,7 @@ describe('campaign level solvability', () => {
     ])
   })
 
-  it('solves all five correspondence levels', () => {
+  it('solves the positive correspondence levels', () => {
     expectSolved('correspondence-t', [{ from: 'w0', to: 'w0' }, { from: 'w1', to: 'w1' }])
     expectSolved('correspondence-d', [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w0' }])
     expectSolved('correspondence-b', [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w0' }])
@@ -113,5 +113,12 @@ describe('campaign level solvability', () => {
       { from: 'w2', to: 'w1' }, { from: 'w2', to: 'w2' }, { from: 'w2', to: 'w3' },
       { from: 'w3', to: 'w1' }, { from: 'w3', to: 'w2' }, { from: 'w3', to: 'w3' },
     ])
+  })
+
+  it('solves the negative correspondence instances', () => {
+    expectSolved('correspondence-break-t', [{ from: 'w0', to: 'w0' }])
+    expectSolved('correspondence-break-b', [{ from: 'w0', to: 'w1' }])
+    expectSolved('correspondence-break-four', [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }])
+    expectSolved('correspondence-break-five', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }])
   })
 })

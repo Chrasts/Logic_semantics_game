@@ -48,6 +48,11 @@ states otherwise.
    `w1 → w2`, `w2 → w1`, and `w2 → w2`.
 6. **5 on a larger cluster:** retain the three edges from `w0`, then add every
    ordered pair among `w1`, `w2`, and `w3`.
+7. **Break reflexivity:** retain only `w0 → w0`.
+8. **Break symmetry:** retain only `w0 → w1`.
+9. **Break transitivity:** retain `w0 → w1` and `w1 → w2`, removing
+   `w0 → w2`.
+10. **Break Euclideanness:** retain only `w0 → w1` and `w0 → w2`.
 
 Alternative solutions may exist whenever the level constraints do not enforce
 minimality or a unique construction.

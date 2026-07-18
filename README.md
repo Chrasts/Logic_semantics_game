@@ -38,6 +38,8 @@ and use `gh-pages` with the root (`/`) folder as the Pages source.
 - Verification at one selected world.
 - Verification at every world under the current valuation.
 - Finite-frame validity across every valuation of the atoms in a formula.
+- Explicit pointed-model, model-global, frame-validity, and correspondence objectives.
+- Separate formula, relational-property, and instance-correspondence verdicts.
 - Counterexample worlds and countervaluations when verification fails.
 - Reflexive, symmetric, transitive, and Euclidean closure.
 - Validation of reflexive, symmetric, transitive, Euclidean, serial,
@@ -45,14 +47,21 @@ and use `gh-pages` with the root (`/`) folder as the Pages source.
 - Correspondence presets for modal axioms T, D, B, 4, and 5.
 - Edit and Evaluate modes, undo/redo, collapsible panels, and local persistence.
 - Core logic and UI regression tests with Vitest and Testing Library.
+- A concise modal-logic tutorial and three data-driven campaign tracks.
+- A separate formal introduction to Kripke semantics using the valuation ν.
+- A tabbed in-game guide for modal theory, controls, objectives, and constraints.
+- Reusable construction constraints for size, edges, valuations, and frame properties.
 
 ## Mathematical conventions
 
-A finite Kripke model is `M = (W, R, V)`, where `W` is a finite set of worlds,
-`R` is a binary accessibility relation, and `V` assigns a set of true atoms to
-each world.
+A finite Kripke model is `M = (W, R, ν)`, where `W` is a finite set of worlds,
+`R` is a binary accessibility relation, and `ν: Prop → ℘(W)` is a valuation.
 
-- `M,w ⊨ p` exactly when `p ∈ V(w)`.
+The underlying frame is `F = (W, R)`. The application uses the standard
+satisfaction notation `M,w ⊨ φ`; `⊩` is also used in some literature, especially
+for forcing, but is not used as a component of the model here.
+
+- `M,w ⊨ p` exactly when `w ∈ ν(p)`.
 - Boolean connectives use standard classical semantics.
 - `M,w ⊨ □φ` exactly when `φ` holds at every world accessible from `w`.
 - `M,w ⊨ ◇φ` exactly when `φ` holds at some world accessible from `w`.
@@ -66,6 +75,11 @@ The application distinguishes three semantic scopes:
 - `M,w ⊨ φ`: one selected world under the current valuation;
 - `M ⊨ φ`: every world under the current valuation;
 - `F ⊨ φ`: every world under every valuation on a finite frame.
+
+The correspondence objective compares `F ⊨ φ` with a selected relational
+property on the current finite frame. Agreement is an instance verification,
+not by itself a general proof that the formula characterizes that property on
+every frame.
 
 Finite-frame validity is checked by exhaustive valuation enumeration. Its cost
 is exponential in the number of worlds and distinct atoms, so the UI enforces a
@@ -102,11 +116,19 @@ src/
 
 The logic core has no dependency on React or React Flow.
 
+## Campaign documentation
+
+- [Campaign Guide](docs/CAMPAIGNS.md) — campaign and mission descriptions
+  without solutions.
+- [Campaign Solutions](docs/SOLUTIONS.md) — explicitly separated spoilers and
+  reference constructions.
+
 ## Current scope
 
 The pilot intentionally has no backend, database, AI validator, external
 solver, or proof of model minimality. Infinite Kripke models are deferred until
 a precise regular representation and semantics are specified.
 
-The next major product stage is a campaign built on the verified sandbox and
-correspondence tools.
+Tutorial and campaign content use the same verified sandbox and correspondence
+engine. Future chapters can add bounded frame search, scoring, and further
+constraint types without replacing the editor.

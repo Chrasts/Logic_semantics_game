@@ -21,6 +21,7 @@ describe('game objectives', () => {
     const result = verifyObjective({ scope: 'frame', targetTruth: false }, input)
     expect(result.formula.witnessValuation).toEqual({ w0: [] })
     expect(result.formula.truthByWorld).toEqual([{ worldId: 'w0', value: false }])
+    expect(result.formula.evaluationTraces?.[0]).toMatchObject({ formula: '□p → p', worldId: 'w0', value: false })
   })
 
   it('compares frame validity with a relational property', () => {

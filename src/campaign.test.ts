@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { checkConstructionConstraints, checkFrameProperty, parseFormula, verifyObjective, type AccessibilityEdge, type FramePropertyName } from './logic'
 import { campaignTracks, tutorialLevels } from './campaign'
 
-const level = (id: string) => campaignTracks.flatMap((track) => track.levels).find((item) => item.id === id)!
+const level = (id: string) => [...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels)].find((item) => item.id === id)!
 const correspondenceProperties: Record<string, FramePropertyName> = { t: 'reflexive', d: 'serial', b: 'symmetric', '4': 'transitive', '5': 'euclidean' }
 const verify = (id: string, edges: readonly AccessibilityEdge[], valuation?: Record<string, string[]>) => {
   const item = level(id)
@@ -31,6 +31,7 @@ const expectSolved = (id: string, edges: readonly AccessibilityEdge[], valuation
 
 describe('campaign level solvability', () => {
   it('defines mathematically well-formed level data', () => {
+    expect(tutorialLevels.every((item) => Boolean(item.learningObjective?.trim()))).toBe(true)
     for (const item of [...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels)]) {
       const worldIds = item.worlds.map((world) => world.id)
       expect(worldIds.length, `${item.id}: non-empty W`).toBeGreaterThan(0)
@@ -42,6 +43,10 @@ describe('campaign level solvability', () => {
         expect(worldIds, `${item.id}: edge target`).toContain(edge.to)
       }
       expect(item.scope === 'correspondence', `${item.id}: correspondence preset`).toBe(Boolean(item.correspondencePreset))
+      if (item.prediction) {
+        expect(item.prediction.prompt.trim(), `${item.id}: prediction prompt`).not.toBe('')
+        if (item.prediction.kind === 'counterexample-world') expect(item.scope, `${item.id}: world prediction scope`).toBe('model')
+      }
       if (item.constraints?.minimumWorlds !== undefined && item.constraints.maximumWorlds !== undefined) {
         expect(item.constraints.minimumWorlds, `${item.id}: consistent world bounds`).toBeLessThanOrEqual(item.constraints.maximumWorlds)
       }
@@ -66,6 +71,13 @@ describe('campaign level solvability', () => {
     expectSolved('local-distribution-countermodel', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }])
     expectSolved('local-contingent-possibility', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }])
     expectSolved('local-uniform-branching', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }])
+  })
+
+  it('solves the added tutorial constructions', () => {
+    expectSolved('tutorial-accessibility', [{ from: 'w0', to: 'w1' }])
+    expectSolved('tutorial-nested-modalities', [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }])
+    expectSolved('tutorial-local-countermodel', [{ from: 'w0', to: 'w1' }])
+    expectSolved('tutorial-relational-property', [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w0' }])
   })
 
   it('solves both global-model objectives', () => {

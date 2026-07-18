@@ -21,7 +21,15 @@ and sandbox models and completed missions are saved locally in the browser.
 - Compare modal axioms T, D, B, 4, and 5 with their characteristic frame
   properties on concrete finite frames.
 - Inspect counterexample worlds and countervaluations when an objective fails.
+- Expand a recursive evaluation tree showing subformulas, worlds, modal
+  witnesses, counterexample successors, and vacuous truth.
 - Keep an anonymous browser-local guest history and export it as a JSON backup.
+- Turn the current sandbox into a versioned custom mission, choose which editor
+  parts remain unlocked, add size and frame-property constraints, predictions,
+  required or forbidden edges and atoms, and an optional edge bonus, then share
+  or launch the mission as JSON. Authors can capture a separate starting state
+  and a mathematically verified reference solution; importing the mission loads
+  only the player start.
 
 The formula editor accepts `¬`, `∧`, `∨`, `→`, `□`, and `◇`, as well as the text
 alternatives `!`, `&`, `|`, `->`, `box`, and `diamond`.
@@ -36,9 +44,10 @@ all valuations.
 
 ### Tutorial
 
-Nine interactive lessons introduce the game interface, valuations,
-accessibility, semantic scopes, frame constraints, correspondence, and a final
-model-building recap.
+Thirteen interactive lessons with explicit learning objectives introduce
+valuations, evaluation worlds, model editing, accessibility, nested modalities,
+countermodels, semantic scopes, frame constraints, correspondence, and a final
+model-building recap. Selected lessons require a prediction before verification.
 
 ### Campaigns
 

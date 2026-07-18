@@ -98,9 +98,10 @@ describe('model integrity', () => {
 describe('deterministic explanations', () => {
   it('identifies a witness for diamond', () => {
     const model = createModel({ w0: [], w1: ['p'] }, [{ from: 'w0', to: 'w1' }])
-    expect(evaluateWithExplanation(model, 'w0', diamond(p))).toEqual({
+    expect(evaluateWithExplanation(model, 'w0', diamond(p))).toMatchObject({
       value: true,
       explanation: '◇p is true: w0 R w1, and the formula is true at w1.',
+      trace: { rule: 'possibility', worldId: 'w0', value: true, children: [{ formula: 'p', worldId: 'w1', value: true }] },
     })
   })
 
@@ -110,6 +111,20 @@ describe('deterministic explanations', () => {
   })
 
   it('explains vacuous truth at a terminal world', () => {
-    expect(evaluateWithExplanation(createModel({ w0: [] }), 'w0', box(p)).explanation).toMatch(/vacuously/)
+    const evaluation = evaluateWithExplanation(createModel({ w0: [] }), 'w0', box(p))
+    expect(evaluation.explanation).toMatch(/vacuously/)
+    expect(evaluation.trace).toMatchObject({ rule: 'necessity', value: true, children: [], diagnostic: expect.stringMatching(/No successor/) })
+  })
+
+  it('retains every relevant branch in a nested evaluation tree', () => {
+    const model = createModel(
+      { w0: [], w1: ['p'], w2: [] },
+      [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }],
+    )
+    const trace = evaluateWithExplanation(model, 'w0', box(implies(p, q))).trace
+    expect(trace.rule).toBe('necessity')
+    expect(trace.children).toHaveLength(2)
+    expect(trace.children.map(({ worldId }) => worldId)).toEqual(['w1', 'w2'])
+    expect(trace.children[0].children).toHaveLength(2)
   })
 })

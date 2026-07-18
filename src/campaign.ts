@@ -7,6 +7,11 @@ export interface GameLevel {
   readonly chapter: string
   readonly title: string
   readonly concept: string
+  readonly learningObjective?: string
+  readonly prediction?: {
+    readonly kind: 'truth' | 'counterexample-world'
+    readonly prompt: string
+  }
   readonly briefing?: string
   readonly instruction: string
   readonly formula: string
@@ -35,9 +40,10 @@ export interface CampaignTrack {
   readonly levels: readonly GameLevel[]
 }
 
-export const tutorialLevels: readonly GameLevel[] = [
+const tutorialLevelDefinitions: readonly GameLevel[] = [
   {
     id: 'tutorial-evaluation', chapter: 'Tutorial', title: 'Evaluation world', concept: '“True somewhere” means true at the selected world',
+    learningObjective: 'Distinguish truth at a designated world from truth elsewhere in the same model.',
     briefing: 'The petrol outline marks the evaluation world used by a pointed objective. Select a world on the map, or use the Evaluation world control in the Verification panel.',
     instruction: 'Make p true at the evaluation world.', formula: 'p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
@@ -45,6 +51,7 @@ export const tutorialLevels: readonly GameLevel[] = [
   },
   {
     id: 'tutorial-add-world', chapter: 'Tutorial', title: 'Adding a world', concept: 'World controls',
+    learningObjective: 'Construct the carrier set W by adding and positioning worlds.',
     briefing: 'Use + World above the map or + Add world in the Worlds and valuations panel. New worlds receive a unique default name and can be repositioned on the map.',
     instruction: 'Create a model with exactly three worlds.', formula: 'p ∨ ¬p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
@@ -52,6 +59,7 @@ export const tutorialLevels: readonly GameLevel[] = [
   },
   {
     id: 'tutorial-valuation', chapter: 'Tutorial', title: 'Editing a valuation', concept: 'True atoms and ν',
+    learningObjective: 'Read and edit the valuation ν at an individual world.',
     briefing: 'Edit the True atoms field in the Worlds and valuations panel or select a world on the map and use its inspector. Separate several atoms with spaces or commas.',
     instruction: 'Make p true at w0.', formula: 'p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
@@ -59,6 +67,7 @@ export const tutorialLevels: readonly GameLevel[] = [
   },
   {
     id: 'tutorial-add-relation', chapter: 'Tutorial', title: 'Accessibility', concept: 'R ⊆ W × W · M,w ⊨ ◇φ',
+    learningObjective: 'Use accessibility to provide a witness world for a possibility formula.',
     briefing: 'A relation is a directed arrow between worlds. Create one by dragging between handles on the map or by using the Accessibility panel.',
     instruction: 'Make ◇p true at w0.', formula: '◇p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
@@ -66,6 +75,7 @@ export const tutorialLevels: readonly GameLevel[] = [
   },
   {
     id: 'tutorial-remove-relation', chapter: 'Tutorial', title: 'Editing accessibility', concept: 'M,w ⊨ □φ',
+    learningObjective: 'Recognize that every accessible successor must satisfy the operand of □.',
     briefing: 'Select an explicit relation on the map and use Delete selected edge, double-click it, or remove it from the Accessibility panel.',
     instruction: 'Use exactly one relation and make □p true at w0.', formula: '□p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
@@ -73,6 +83,7 @@ export const tutorialLevels: readonly GameLevel[] = [
   },
   {
     id: 'tutorial-global-model', chapter: 'Tutorial', title: 'Global truth in a model', concept: 'M ⊨ φ iff ∀w ∈ W: M,w ⊨ φ',
+    learningObjective: 'Distinguish model-global truth under a fixed valuation from pointed truth.',
     briefing: 'In the game, “true globally in the model” checks every world while keeping the displayed valuation fixed. A single counterexample world makes the objective fail.',
     instruction: 'Make p ∨ ◇p true globally in M.', formula: 'p ∨ ◇p', scope: 'model', targetTruth: true, evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
@@ -80,6 +91,7 @@ export const tutorialLevels: readonly GameLevel[] = [
   },
   {
     id: 'tutorial-frame-constraint', chapter: 'Tutorial', title: 'Frames and global constraints', concept: 'F ⊨ φ iff ∀ν ∀w ∈ W: ⟨F,ν⟩,w ⊨ φ',
+    learningObjective: 'Distinguish frame validity over all valuations from truth in one displayed model.',
     briefing: '“Valid on the frame” checks every world under every possible valuation, not only the atoms currently displayed. Constraints can validate a relational property or enforce its closure globally.',
     instruction: 'Globally enforce reflexivity and verify □p → p on the resulting frame.', formula: '□p → p', scope: 'frame', targetTruth: true, evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
@@ -87,6 +99,7 @@ export const tutorialLevels: readonly GameLevel[] = [
   },
   {
     id: 'tutorial-correspondence', chapter: 'Tutorial', title: 'Formula and relation', concept: 'F ⊨ p → □◇p iff R is symmetric',
+    learningObjective: 'Compare validity of a modal axiom with its corresponding relational property on one finite frame.',
     briefing: 'A correspondence claim compares modal frame validity with a property of R. Verification reports F ⊨ φ, the relational condition, and their agreement on the current finite frame separately.',
     instruction: 'Satisfy the frame constraint and verify that both sides agree on this finite frame.', formula: 'p → □◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: 'b',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
@@ -94,12 +107,69 @@ export const tutorialLevels: readonly GameLevel[] = [
   },
   {
     id: 'tutorial-recap', chapter: 'Tutorial', title: 'Model-building recap', concept: 'Worlds, valuations, relations, and pointed truth together',
+    learningObjective: 'Coordinate worlds, valuation, accessibility, and an evaluation point in one construction.',
     briefing: 'This recap combines the editor operations from the preceding lessons. Build the required three-world model, set its valuation, and choose exactly two accessibility edges.',
     instruction: 'Make ◇p ∧ □(p ∨ q) true at w0 using exactly three worlds and two relations.', formula: '◇p ∧ □(p ∨ q)', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 70 } }, { id: 'w1', atoms: '', position: { x: 90, y: 230 } }],
     edges: [], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2 }, editable: ['worlds', 'valuations', 'edges', 'evaluation'],
   },
+  {
+    id: 'tutorial-accessibility', chapter: 'Tutorial', title: 'Drawing accessibility', concept: 'R is a directed binary relation on W',
+    learningObjective: 'Create and read the direction of an accessibility edge independently of modal evaluation.',
+    briefing: 'Draw one directed edge by dragging between world handles or by using the Accessibility panel. The source and target order matters.',
+    instruction: 'Create exactly one accessibility edge from w0 to w1.', formula: 'p ∨ ¬p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
+    edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 1, maximumEdges: 1, requiredEdges: [{ from: 'w0', to: 'w1' }] }, editable: ['edges'],
+  },
+  {
+    id: 'tutorial-nested-modalities', chapter: 'Tutorial', title: 'Nested modalities', concept: 'Modal depth follows successive accessibility steps',
+    learningObjective: 'Evaluate a nested possibility by following two successive accessibility steps.',
+    briefing: 'Before verification, predict the truth value of the completed construction. The evaluation tree will then expose both modal steps.',
+    instruction: 'Make ◇◇p true at w0 using exactly two edges.', formula: '◇◇p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    prediction: { kind: 'truth', prompt: 'Will ◇◇p be true at w0 in your completed model?' },
+    worlds: [{ id: 'w0', atoms: '', position: { x: 70, y: 130 } }, { id: 'w1', atoms: '', position: { x: 260, y: 130 } }, { id: 'w2', atoms: 'p', position: { x: 450, y: 130 } }],
+    edges: [], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 2 }, editable: ['edges'],
+  },
+  {
+    id: 'tutorial-local-countermodel', chapter: 'Tutorial', title: 'Locate a counterexample', concept: 'One failing world refutes model-global truth',
+    learningObjective: 'Construct and identify a world witnessing failure of a model-global formula.',
+    briefing: 'A model-global objective fails as soon as one world falsifies the formula. Predict that counterexample world before verification.',
+    instruction: 'Remove one edge so □p → p is false somewhere in the model.', formula: '□p → p', scope: 'model', targetTruth: false, evaluationWorld: 'w0',
+    prediction: { kind: 'counterexample-world', prompt: 'Which world will falsify □p → p?' },
+    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
+    edges: [{ from: 'w0', to: 'w0' }, { from: 'w0', to: 'w1' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 1, maximumEdges: 1, requiredEdges: [{ from: 'w0', to: 'w1' }] }, editable: ['edges'],
+  },
+  {
+    id: 'tutorial-relational-property', chapter: 'Tutorial', title: 'Relational properties', concept: 'Frame constraints are properties of R',
+    learningObjective: 'Repair a relation so that it satisfies symmetry independently of the displayed valuation.',
+    briefing: 'Validate checks a property without changing the relation. A directed edge is symmetric only when its reverse edge is present.',
+    instruction: 'Make the relation symmetric while retaining the required edge.', formula: 'p → p', scope: 'frame', targetTruth: true, evaluationWorld: 'w0',
+    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
+    edges: [{ from: 'w0', to: 'w1' }], frameRules: { symmetric: 'validate' }, constraints: { minimumWorlds: 2, maximumWorlds: 2, requiredEdges: [{ from: 'w0', to: 'w1' }], maximumEdges: 2 }, editable: ['edges'],
+  },
 ]
+
+const tutorialOrder = [
+  'tutorial-valuation',
+  'tutorial-evaluation',
+  'tutorial-add-world',
+  'tutorial-accessibility',
+  'tutorial-add-relation',
+  'tutorial-remove-relation',
+  'tutorial-nested-modalities',
+  'tutorial-local-countermodel',
+  'tutorial-global-model',
+  'tutorial-frame-constraint',
+  'tutorial-relational-property',
+  'tutorial-correspondence',
+  'tutorial-recap',
+] as const
+
+export const tutorialLevels: readonly GameLevel[] = tutorialOrder.map((id) => {
+  const level = tutorialLevelDefinitions.find((candidate) => candidate.id === id)
+  if (!level) throw new Error(`Unknown tutorial level: ${id}`)
+  return level
+})
 
 export const campaignTracks: readonly CampaignTrack[] = [
   {

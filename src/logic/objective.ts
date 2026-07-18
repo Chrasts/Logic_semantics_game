@@ -1,4 +1,4 @@
-import { evaluateWithExplanation } from './evaluate'
+import { evaluateWithExplanation, type EvaluationTrace } from './evaluate'
 import { checkFrameProperty, type FramePropertyName } from './frame'
 import type { Formula } from './formula'
 import { createModel, type AccessibilityEdge, type WorldId } from './model'
@@ -27,6 +27,7 @@ export interface VerdictSection {
   readonly detail: string
   readonly truthByWorld?: readonly { readonly worldId: WorldId; readonly value: boolean }[]
   readonly witnessValuation?: Readonly<Record<WorldId, readonly string[]>>
+  readonly evaluationTraces?: readonly EvaluationTrace[]
 }
 
 export interface ObjectiveVerdict {
@@ -62,6 +63,7 @@ export function verifyObjective(definition: ObjectiveDefinition, input: Objectiv
         summary: `The formula is ${evaluation.value ? 'true' : 'false'} at ${world}.`,
         detail: evaluation.explanation,
         truthByWorld: truthByWorld(valuation),
+        evaluationTraces: [evaluation.trace],
       },
     }
   }
@@ -80,6 +82,9 @@ export function verifyObjective(definition: ObjectiveDefinition, input: Objectiv
           ? `Counterexample at ${evaluation.counterexample.worldId}. ${evaluation.counterexample.explanation.explanation}`
           : `The formula is true at all ${worldIds.length} worlds.`,
         truthByWorld: truthByWorld(valuation),
+        evaluationTraces: evaluation.counterexample
+          ? [evaluation.counterexample.explanation.trace]
+          : worldIds.map((worldId) => evaluateWithExplanation(createModel(valuation, edges), worldId, formula).trace),
       },
     }
   }
@@ -94,6 +99,7 @@ export function verifyObjective(definition: ObjectiveDefinition, input: Objectiv
       : `Checked all ${frameValidity.checkedValuations.toLocaleString('en-US')} valuations at every world.`,
     truthByWorld: truthByWorld(frameValidity.counterexample?.valuation ?? valuation),
     witnessValuation: frameValidity.counterexample?.valuation,
+    evaluationTraces: frameValidity.counterexample ? [frameValidity.counterexample.explanation.trace] : undefined,
   }
 
   if (definition.scope === 'frame') {

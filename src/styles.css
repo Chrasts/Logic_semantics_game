@@ -472,9 +472,11 @@ input:disabled, select:disabled { cursor: not-allowed; opacity: .62; }
 
 @media (max-width: 760px) {
   .topbar { align-items: stretch; flex-direction: column; }
-  .brand, .topbar-actions { justify-content: space-between; }
+  .brand { min-width: 0; justify-content: space-between; }
+  .topbar-actions { width: 100%; min-width: 0; flex-wrap: wrap; justify-content: flex-start; gap: .35rem; }
+  .topbar-actions .author-link { max-width: 100%; margin-left: auto; border-left: 0; padding-inline: .45rem; }
   .brand { align-items: center; flex-wrap: wrap; }
-  .product-nav { width: 100%; order: 3; overflow-x: auto; }
+  .product-nav { width: 100%; max-width: 100%; order: 3; overflow-x: auto; }
   .mission-hud { grid-template-columns: 1fr; align-items: stretch; }
   .mission-copy { grid-template-columns: 1fr; }
   .mission-copy .tutorial-briefing, .mission-copy .level-objective { grid-column: 1; }

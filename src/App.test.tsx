@@ -8,7 +8,7 @@ import { App } from './App'
 describe('sandbox user interface', () => {
   it('links to the game repository', () => {
     render(<App />)
-    expect(screen.getByRole('link', { name: 'Logic Model Builder repository on GitHub' })).toHaveAttribute('href', 'https://github.com/Chrasts/Logic_semantics_game')
+    expect(screen.getByRole('link', { name: 'Open the Logic Model Builder GitHub repository' })).toHaveAttribute('href', 'https://github.com/Chrasts/Logic_semantics_game')
   })
 
   beforeEach(() => {
@@ -382,6 +382,7 @@ describe('sandbox user interface', () => {
     await user.selectOptions(screen.getByLabelText('Edge target world'), 'w1')
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
     expect(screen.getByRole('dialog', { name: 'Custom mission complete' })).toBeVisible()
+    expect(screen.getByText(/Distinct solutions recorded for this mission:/)).toHaveTextContent('1')
   })
 
   it('requires a correct relational-property answer when the mission requests it', async () => {
@@ -429,6 +430,34 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
     expect(screen.getByText('Required answer incorrect')).toBeVisible()
     await user.click(within(answers).getByRole('radio', { name: /A/ }))
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    expect(screen.getByRole('dialog', { name: 'Custom mission complete' })).toBeVisible()
+  })
+
+  it('renders candidate models and requires the configured model choice', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Data' }))
+    const mission = {
+      format: 'logic-model-builder-level', version: 1,
+      level: {
+        id: 'model-choice-test', chapter: 'Custom mission', title: 'Compare models', concept: 'Candidate models',
+        instruction: 'Choose the model.', formula: 'p -> p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+        worlds: [{ id: 'w0', atoms: '', position: { x: 90, y: 130 } }], edges: [], editable: [],
+        prediction: { kind: 'model-choice', prompt: 'Where is diamond p true?', expectedChoice: 'A', mustBeCorrect: true, modelChoices: [
+          { id: 'A', evaluationWorld: 'w0', worlds: [{ id: 'w0', atoms: '' }, { id: 'w1', atoms: 'p' }], edges: [{ from: 'w0', to: 'w1' }] },
+          { id: 'B', evaluationWorld: 'w0', worlds: [{ id: 'w0', atoms: '' }, { id: 'w1', atoms: 'p' }], edges: [] },
+        ] },
+      },
+    }
+    fireEvent.change(screen.getByLabelText('Model JSON'), { target: { value: JSON.stringify(mission) } })
+    await user.click(screen.getByRole('button', { name: 'Import JSON' }))
+    const answers = screen.getByRole('radiogroup', { name: 'Candidate model answer' })
+    expect(answers).toHaveTextContent('R = {(w0,w1)}')
+    await user.click(within(answers).getByRole('radio', { name: /Model B/ }))
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    expect(screen.getByText('Required answer incorrect')).toBeVisible()
+    await user.click(within(answers).getByRole('radio', { name: /Model A/ }))
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
     expect(screen.getByRole('dialog', { name: 'Custom mission complete' })).toBeVisible()
   })

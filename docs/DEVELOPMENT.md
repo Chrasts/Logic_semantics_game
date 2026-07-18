@@ -96,6 +96,17 @@ biconditional at every world under every valuation and returns a distinguishing
 countervaluation when it fails. Correspondence objectives intentionally cannot
 be combined with formula equivalence.
 
+## Solution diversity and isomorphism
+
+Successful guided or custom missions receive a canonical finite-structure
+signature in the local guest profile. Canonicalization ignores world names and
+coordinates. It preserves explicit semantic relation edges and preserves
+valuations for pointed/model objectives; frame and correspondence solutions
+ignore the displayed valuation. Pointed objectives additionally preserve the
+designated evaluation world. The current exact permutation algorithm is capped
+at eight worlds, and diversity tracking is skipped—not mission verification—if
+that limit is exceeded. At most 25 signatures are retained per mission.
+
 ## Optional mission bonuses
 
 A level may define `bonusConstraints` in addition to its required construction
@@ -122,6 +133,13 @@ stable choice identifiers. Import validation requires every choice to assign an
 atom list to every mission world and requires `expectedChoice` to reference one
 of those choices. With `mustBeCorrect`, selecting the correct concrete
 assignment is part of completion rather than optional prediction feedback.
+
+The `model-choice` interaction stores two or more self-contained finite pointed
+models. Each candidate has its own worlds, atom lists, explicit relation, and
+evaluation world. Import validation is independent for every candidate, so a
+candidate cannot reference worlds from either the playable level or another
+choice. The expected choice is authored explicitly because the prompt may ask
+about any supported semantic property, not only the level's primary formula.
 
 ## Custom mission files
 

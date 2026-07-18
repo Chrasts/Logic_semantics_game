@@ -146,8 +146,9 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
     mustBeCorrect: predictionSource.mustBeCorrect,
     expectedChoice: predictionSource.expectedChoice,
     countervaluationChoices: predictionSource.countervaluationChoices,
+    modelChoices: predictionSource.modelChoices,
   } : undefined
-  if (prediction && !['truth', 'counterexample-world', 'frame-property', 'countervaluation'].includes(String(prediction.kind))) throw new Error('Invalid custom mission prediction kind.')
+  if (prediction && !['truth', 'counterexample-world', 'frame-property', 'countervaluation', 'model-choice'].includes(String(prediction.kind))) throw new Error('Invalid custom mission prediction kind.')
   if (prediction && (typeof prediction.prompt !== 'string' || !prediction.prompt.trim())) throw new Error('A custom mission prediction needs a prompt.')
   if (prediction?.kind === 'counterexample-world' && source.scope !== 'model') throw new Error('Counterexample-world prediction requires model-global scope.')
   if (prediction?.mustBeCorrect !== undefined && typeof prediction.mustBeCorrect !== 'boolean') throw new Error('Invalid prediction correctness requirement.')
@@ -168,6 +169,30 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
       for (const atoms of Object.values(choiceValuation)) if ((atoms as unknown[]).some((atom) => typeof atom !== 'string' || !/^[A-Za-z][A-Za-z0-9_]*$/u.test(atom))) throw new Error('Invalid atom in a countervaluation choice.')
     }
     if (!choiceIds.has(prediction.expectedChoice)) throw new Error('The expected countervaluation choice must be present among the choices.')
+  }
+  if (prediction?.kind === 'model-choice') {
+    if (typeof prediction.expectedChoice !== 'string' || !prediction.expectedChoice.trim()) throw new Error('A model-choice interaction needs an expected choice.')
+    if (!Array.isArray(prediction.modelChoices) || prediction.modelChoices.length < 2) throw new Error('A model-choice interaction needs at least two candidate models.')
+    const choiceIds = new Set<string>()
+    for (const item of prediction.modelChoices) {
+      const choice = object(item, 'Invalid candidate model.')
+      if (typeof choice.id !== 'string' || !choice.id.trim() || choiceIds.has(choice.id)) throw new Error('Candidate model ids must be non-empty and unique.')
+      choiceIds.add(choice.id)
+      if (!Array.isArray(choice.worlds) || choice.worlds.length === 0) throw new Error('Every candidate model needs at least one world.')
+      const candidateIds = choice.worlds.map((item) => {
+        const world = object(item, 'Invalid candidate-model world.')
+        if (typeof world.id !== 'string' || !world.id.trim() || typeof world.atoms !== 'string' || world.atoms.split(/[\s,]+/u).filter(Boolean).some((atom) => !/^[A-Za-z][A-Za-z0-9_]*$/u.test(atom))) throw new Error('Invalid candidate-model world or atom list.')
+        return world.id
+      })
+      if (new Set(candidateIds).size !== candidateIds.length) throw new Error('Candidate-model world ids must be unique.')
+      if (typeof choice.evaluationWorld !== 'string' || !candidateIds.includes(choice.evaluationWorld)) throw new Error('A candidate-model evaluation world must exist.')
+      if (!Array.isArray(choice.edges)) throw new Error('Invalid candidate-model relation.')
+      for (const item of choice.edges) {
+        const edge = object(item, 'Invalid candidate-model edge.')
+        if (typeof edge.from !== 'string' || typeof edge.to !== 'string' || !candidateIds.includes(edge.from) || !candidateIds.includes(edge.to)) throw new Error('A candidate-model edge references an unknown world.')
+      }
+    }
+    if (!choiceIds.has(prediction.expectedChoice)) throw new Error('The expected candidate model must be present among the choices.')
   }
   const constraints = parseConstraints(source.constraints, 'custom mission constraints')
   const bonusConstraints = parseConstraints(source.bonusConstraints, 'custom mission bonus constraints')

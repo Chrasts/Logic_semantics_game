@@ -22,6 +22,7 @@ import {
   applyFrameProperties,
   checkConstructionConstraints,
   checkFrameProperty,
+  canonicalModelSignature,
   describeConstructionConstraints,
   parseFormula,
   verifyObjective,
@@ -185,6 +186,7 @@ interface GuestProfile {
   readonly id: string
   readonly createdAt: string
   readonly history: readonly HistoryEntry[]
+  readonly solutionSignatures: Readonly<Record<string, readonly string[]>>
 }
 
 const guestProfileKey = 'logic-game:guest-profile:v1'
@@ -198,9 +200,12 @@ function loadGuestProfile(): GuestProfile {
       id: stored.id,
       createdAt: stored.createdAt,
       history: stored.history.filter((entry): entry is HistoryEntry => Boolean(entry && typeof entry.id === 'string' && typeof entry.timestamp === 'string' && typeof entry.title === 'string' && typeof entry.success === 'boolean')).slice(0, 250),
+      solutionSignatures: stored.solutionSignatures && typeof stored.solutionSignatures === 'object'
+        ? Object.fromEntries(Object.entries(stored.solutionSignatures).filter(([, signatures]) => Array.isArray(signatures)).map(([levelId, signatures]) => [levelId, [...new Set((signatures as unknown[]).filter((signature): signature is string => typeof signature === 'string'))].slice(0, 25)]))
+        : {},
     }
   } catch {
-    return { id: createLocalId(), createdAt: new Date().toISOString(), history: [] }
+    return { id: createLocalId(), createdAt: new Date().toISOString(), history: [], solutionSignatures: {} }
   }
 }
 
@@ -492,6 +497,8 @@ export function App() {
   const overallCampaignCompleted = campaignTracks.reduce((total, track) => total + track.levels.filter((level) => completedLevelIds.has(level.id)).length, 0)
   const successfulAttempts = guestProfile.history.filter((entry) => entry.success).length
   const completedHistoryLevels = new Set(guestProfile.history.filter((entry) => entry.success && entry.levelId).map((entry) => entry.levelId)).size
+  const distinctSolutions = Object.values(guestProfile.solutionSignatures).reduce((total, signatures) => total + signatures.length, 0)
+  const activeDistinctSolutionCount = activeLevel ? guestProfile.solutionSignatures[activeLevel.id]?.length ?? 0 : 0
   const isGuidedMode = gameMode !== 'sandbox'
   const canEditWorlds = editorMode === 'edit' && (!activeLevel || activeLevel.editable.includes('worlds'))
   const canEditValuations = editorMode === 'edit' && (!activeLevel || activeLevel.editable.includes('valuations'))
@@ -793,7 +800,9 @@ export function App() {
                     ? `${predictionAnswer} is not a counterexample world under the evaluated valuation.`
                     : activeLevel.prediction.kind === 'frame-property'
                       ? `${predictionAnswer} is not the required relational property.`
-                      : `${predictionAnswer} is not the countervaluation that refutes the formula.`,
+                      : activeLevel.prediction.kind === 'countervaluation'
+                        ? `${predictionAnswer} is not the countervaluation that refutes the formula.`
+                        : `${predictionAnswer} is not the required candidate model.`,
             }
           })()
         : undefined
@@ -813,6 +822,19 @@ export function App() {
       recordAttempt(overallSuccess, overallSuccess && activeLevel?.bonusConstraints ? bonusViolations.length === 0 : undefined)
       if (overallSuccess && activeLevel) {
         setCompletedLevelIds((current) => new Set([...current, activeLevel.id]))
+        try {
+          const signature = canonicalModelSignature({ worldIds: ids, edges: normalizedEdges, valuation: valuations, evaluationWorld }, {
+            includeValuation: evaluationScope === 'pointed' || evaluationScope === 'model',
+            preserveEvaluationWorld: evaluationScope === 'pointed',
+          })
+          setGuestProfile((current) => {
+            const existing = current.solutionSignatures[activeLevel.id] ?? []
+            return existing.includes(signature) ? current : {
+              ...current,
+              solutionSignatures: { ...current.solutionSignatures, [activeLevel.id]: [...existing, signature].slice(0, 25) },
+            }
+          })
+        } catch { /* Diversity tracking is optional for models above the canonicalization limit. */ }
       }
     } catch (error) {
       setResult({ kind: 'error', message: error instanceof Error ? error.message : 'Verification failed.' })
@@ -979,7 +1001,9 @@ export function App() {
         const history = guest.history.filter((entry): entry is HistoryEntry => Boolean(entry && typeof entry.id === 'string' && typeof entry.timestamp === 'string' && typeof entry.title === 'string' && typeof entry.success === 'boolean')).slice(0, 250)
         const knownIds = new Set([...tutorialLevels, ...campaignTracks.flatMap((track) => track.levels)].map((level) => level.id))
         const progress = Array.isArray(imported.completedLevelIds) ? imported.completedLevelIds.filter((id): id is string => typeof id === 'string' && knownIds.has(id)) : []
-        setGuestProfile({ id: guest.id, createdAt: guest.createdAt, history })
+        const rawSolutions = guest.solutionSignatures && typeof guest.solutionSignatures === 'object' ? guest.solutionSignatures : {}
+        const solutionSignatures = Object.fromEntries(Object.entries(rawSolutions).filter(([, signatures]) => Array.isArray(signatures)).map(([levelId, signatures]) => [levelId, [...new Set((signatures as unknown[]).filter((signature): signature is string => typeof signature === 'string'))].slice(0, 25)]))
+        setGuestProfile({ id: guest.id, createdAt: guest.createdAt, history, solutionSignatures })
         setCompletedLevelIds(new Set(progress))
         setShowDataManager(false)
         return
@@ -1103,7 +1127,7 @@ export function App() {
           {appView === 'workspace' && <button type="button" className="text-button" onClick={resetSandbox}>{isGuidedMode ? 'Restart level' : 'Reset model'}</button>}
           {appView === 'workspace' && <button type="button" className="help-button" onClick={() => { setGuideTab('controls'); setShowHelp(true) }}>Controls</button>}
           <button type="button" className="help-button" onClick={openDataManager}>Data</button>
-          <a className="author-link" href="https://github.com/Chrasts/Logic_semantics_game" target="_blank" rel="noreferrer" aria-label="Logic Model Builder repository on GitHub">GitHub</a>
+          <a className="author-link" href="https://github.com/Chrasts/Logic_semantics_game" target="_blank" rel="noreferrer" aria-label="Open the Logic Model Builder GitHub repository">Repository</a>
         </div>
       </header>
 
@@ -1140,7 +1164,7 @@ export function App() {
       {appView === 'profile' && (
         <section className="content-screen profile-screen" aria-labelledby="profile-title">
           <div className="screen-hero compact"><div><p className="eyebrow">Local guest</p><h1 id="profile-title" className="clean-display">Profile and history</h1><p>This anonymous profile belongs to this browser only. No IP address, fingerprint, e-mail, or other personal identifier is collected.</p></div><div className="profile-actions"><button type="button" className="primary-action" onClick={() => downloadJson(serializedProfile(), 'logic-model-builder-profile.json')}>Download profile</button><button type="button" className="secondary-button" onClick={openDataManager}>Import backup</button></div></div>
-          <div className="profile-summary"><article><span>Guest ID</span><strong>{guestProfile.id.slice(0, 8)}</strong><small>Created {new Date(guestProfile.createdAt).toLocaleDateString()}</small></article><article><span>Attempts</span><strong>{guestProfile.history.length}</strong><small>{successfulAttempts} successful verifications</small></article><article><span>Unique levels solved</span><strong>{completedHistoryLevels}</strong><small>{completedLevelIds.size} levels in saved progress</small></article></div>
+          <div className="profile-summary"><article><span>Guest ID</span><strong>{guestProfile.id.slice(0, 8)}</strong><small>Created {new Date(guestProfile.createdAt).toLocaleDateString()}</small></article><article><span>Attempts</span><strong>{guestProfile.history.length}</strong><small>{successfulAttempts} successful verifications</small></article><article><span>Unique levels solved</span><strong>{completedHistoryLevels}</strong><small>{completedLevelIds.size} levels in saved progress</small></article><article><span>Distinct solutions</span><strong>{distinctSolutions}</strong><small>Up to isomorphism within each mission</small></article></div>
           <div className="history-heading"><div><p className="eyebrow">Recent activity</p><h2>Verification history</h2></div>{guestProfile.history.length > 0 && <button type="button" className="danger-button" onClick={clearLocalHistory}>Clear history</button>}</div>
           {guestProfile.history.length === 0 ? <div className="profile-empty"><strong>No attempts recorded yet</strong><span>Verify an objective in the sandbox, tutorial, or a campaign. Up to 250 recent attempts are kept locally.</span></div> : <div className="history-list">{guestProfile.history.map((entry) => <article key={entry.id}><time dateTime={entry.timestamp}>{new Date(entry.timestamp).toLocaleString()}</time><div><strong>{entry.title}</strong><span>{entry.mode} · {entry.scope} · {entry.worldCount} worlds · {entry.edgeCount} relations</span></div><b className={entry.success ? 'success' : 'failure'}>{entry.success ? 'Success' : 'Failed'}</b>{entry.bonusAchieved !== undefined && <em>{entry.bonusAchieved ? 'Bonus' : 'No bonus'}</em>}</article>)}</div>}
         </section>
@@ -1384,7 +1408,9 @@ export function App() {
                   ? <select aria-label="Predicted counterexample world" value={predictionAnswer} onChange={(event) => { setPredictionAnswer(event.target.value); setResult(null) }}><option value="">Select a world</option>{usableWorldIds.map((id) => <option key={id}>{id}</option>)}</select>
                   : activeLevel.prediction.kind === 'frame-property'
                     ? <select aria-label="Relational property answer" value={predictionAnswer} onChange={(event) => { setPredictionAnswer(event.target.value); setResult(null) }}><option value="">Select a property</option>{(activeLevel.prediction.propertyChoices ?? levelPropertyNames).map((property) => <option key={property}>{property}</option>)}</select>
-                    : <div className="countervaluation-choices" role="radiogroup" aria-label="Countervaluation answer">{activeLevel.prediction.countervaluationChoices?.map((choice) => <button type="button" role="radio" aria-checked={predictionAnswer === choice.id} className={predictionAnswer === choice.id ? 'active' : ''} key={choice.id} onClick={() => { setPredictionAnswer(choice.id); setResult(null) }}><b>{choice.id}</b>{Object.entries(choice.valuation).map(([world, atoms]) => <code key={world}>{world}: {atoms.length ? `{${atoms.join(', ')}}` : '∅'}</code>)}</button>)}</div>}
+                    : activeLevel.prediction.kind === 'countervaluation'
+                      ? <div className="countervaluation-choices" role="radiogroup" aria-label="Countervaluation answer">{activeLevel.prediction.countervaluationChoices?.map((choice) => <button type="button" role="radio" aria-checked={predictionAnswer === choice.id} className={predictionAnswer === choice.id ? 'active' : ''} key={choice.id} onClick={() => { setPredictionAnswer(choice.id); setResult(null) }}><b>{choice.id}</b>{Object.entries(choice.valuation).map(([world, atoms]) => <code key={world}>{world}: {atoms.length ? `{${atoms.join(', ')}}` : '∅'}</code>)}</button>)}</div>
+                      : <div className="model-choice-grid" role="radiogroup" aria-label="Candidate model answer">{activeLevel.prediction.modelChoices?.map((choice) => <button type="button" role="radio" aria-checked={predictionAnswer === choice.id} className={predictionAnswer === choice.id ? 'active' : ''} key={choice.id} onClick={() => { setPredictionAnswer(choice.id); setResult(null) }}><strong>Model {choice.id}</strong><span>Evaluation: {choice.evaluationWorld}</span><div>{choice.worlds.map((world) => <code key={world.id}>{world.id}: {world.atoms.trim() ? `{${world.atoms.split(/[\s,]+/u).filter(Boolean).join(', ')}}` : '∅'}</code>)}</div><small>R = {choice.edges.length ? `{${choice.edges.map(({ from, to }) => `(${from},${to})`).join(', ')}}` : '∅'}</small></button>)}</div>}
             </div>
           )}
           <button type="button" className="verify-button" onClick={verify}>Verify objective</button>
@@ -1418,6 +1444,7 @@ export function App() {
             <p className="eyebrow">{campaignLevelIndex === activeLevels.length - 1 ? `${gameMode === 'tutorial' ? 'Tutorial' : gameMode === 'custom' ? 'Custom mission' : 'Campaign'} complete` : 'Objective verified'}</p>
             <h2 id="completion-title">{gameMode === 'custom' ? 'Custom mission complete' : campaignLevelIndex === activeLevels.length - 1 ? 'Sequence complete' : 'Mission complete'}</h2>
             <p><strong>{activeLevel.title}</strong> is now recorded as complete. You can continue immediately or return to the level overview.</p>
+            <p className="solution-diversity">Distinct solutions recorded for this mission: <strong>{activeDistinctSolutionCount}</strong>.</p>
             {result.prediction && <p className={`completion-prediction ${result.prediction.correct ? 'correct' : 'incorrect'}`}><strong>{result.prediction.correct ? 'Prediction correct.' : 'Prediction incorrect.'}</strong> {result.prediction.detail}</p>}
             {result.bonus && <p className={`completion-bonus ${result.bonus.achieved ? 'achieved' : ''}`}>{result.bonus.detail}</p>}
             <div className="completion-progress"><span>{activeLevels.filter((level) => completedLevelIds.has(level.id)).length}/{activeLevels.length} complete</span><div className="progress-meter"><i style={{ width: `${activeLevels.filter((level) => completedLevelIds.has(level.id)).length / activeLevels.length * 100}%` }} /></div></div>

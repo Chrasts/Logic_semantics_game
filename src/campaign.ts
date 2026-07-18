@@ -9,7 +9,7 @@ export interface GameLevel {
   readonly concept: string
   readonly learningObjective?: string
   readonly prediction?: {
-    readonly kind: 'truth' | 'counterexample-world' | 'frame-property' | 'countervaluation'
+    readonly kind: 'truth' | 'counterexample-world' | 'frame-property' | 'countervaluation' | 'model-choice'
     readonly prompt: string
     readonly expectedProperty?: FramePropertyName
     readonly propertyChoices?: readonly FramePropertyName[]
@@ -18,6 +18,12 @@ export interface GameLevel {
     readonly countervaluationChoices?: readonly {
       readonly id: string
       readonly valuation: Readonly<Record<string, readonly string[]>>
+    }[]
+    readonly modelChoices?: readonly {
+      readonly id: string
+      readonly worlds: readonly { readonly id: string; readonly atoms: string }[]
+      readonly edges: readonly { readonly from: string; readonly to: string }[]
+      readonly evaluationWorld: string
     }[]
   }
   readonly briefing?: string
@@ -216,6 +222,19 @@ export const campaignTracks: readonly CampaignTrack[] = [
         instruction: 'Make box p true at w0 using at most one semantic change.', formula: 'box p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
         worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 60 } }, { id: 'w1', atoms: 'p', position: { x: 90, y: 230 } }, { id: 'w2', atoms: '', position: { x: 400, y: 230 } }],
         edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], constraints: { minimumWorlds: 3, maximumWorlds: 3, maximumChanges: 1 }, editable: ['valuations', 'edges'],
+      },
+      {
+        id: 'local-compare-candidates', chapter: 'Local Models', title: 'Compare candidate models', concept: 'Semantic comparison across models',
+        learningObjective: 'Evaluate the same pointed modal formula on two explicitly presented candidate models.',
+        instruction: 'Choose the candidate model in which diamond p is true at w0.', formula: 'p -> p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+        prediction: {
+          kind: 'model-choice', prompt: 'In which candidate is diamond p true at w0?', expectedChoice: 'A', mustBeCorrect: true,
+          modelChoices: [
+            { id: 'A', evaluationWorld: 'w0', worlds: [{ id: 'w0', atoms: '' }, { id: 'w1', atoms: 'p' }], edges: [{ from: 'w0', to: 'w1' }] },
+            { id: 'B', evaluationWorld: 'w0', worlds: [{ id: 'w0', atoms: '' }, { id: 'w1', atoms: 'p' }], edges: [] },
+          ],
+        },
+        worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 130 } }], edges: [], constraints: { minimumWorlds: 1, maximumWorlds: 1, maximumEdges: 0 }, editable: [],
       },
     ],
   },

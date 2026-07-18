@@ -57,6 +57,10 @@ describe('campaign level solvability', () => {
           expect(item.prediction.expectedProperty, `${item.id}: expected property`).toBeDefined()
           expect(item.prediction.propertyChoices, `${item.id}: property choices`).toContain(item.prediction.expectedProperty)
         }
+        if (item.prediction.kind === 'model-choice') {
+          expect(item.prediction.modelChoices?.length, `${item.id}: candidate models`).toBeGreaterThanOrEqual(2)
+          expect(item.prediction.modelChoices?.map(({ id }) => id), `${item.id}: expected model`).toContain(item.prediction.expectedChoice)
+        }
       }
       if (item.constraints?.minimumWorlds !== undefined && item.constraints.maximumWorlds !== undefined) {
         expect(item.constraints.minimumWorlds, `${item.id}: consistent world bounds`).toBeLessThanOrEqual(item.constraints.maximumWorlds)
@@ -67,7 +71,7 @@ describe('campaign level solvability', () => {
   it('defines six tracks and unique level identifiers', () => {
     const ids = campaignTracks.flatMap((track) => track.levels.map((item) => item.id))
     expect(campaignTracks).toHaveLength(6)
-    expect(ids).toHaveLength(32)
+    expect(ids).toHaveLength(33)
     expect(new Set(ids).size).toBe(ids.length)
     expect(campaignTracks.flatMap((track) => track.levels).filter((item) => item.bonusConstraints).length).toBeGreaterThanOrEqual(3)
   })
@@ -87,6 +91,10 @@ describe('campaign level solvability', () => {
   it('repairs a model within one semantic change', () => {
     expectSolved('local-one-change-repair', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], { w0: [], w1: ['p'], w2: ['p'] })
     expectSolved('local-one-change-repair', [{ from: 'w0', to: 'w1' }])
+  })
+
+  it('defines a solvable candidate-model comparison mission', () => {
+    expectSolved('local-compare-candidates', [])
   })
 
   it('solves the added tutorial constructions', () => {

@@ -27,6 +27,8 @@ and sandbox models and completed missions are saved locally in the browser.
 - Expand a recursive evaluation tree showing subformulas, worlds, modal
   witnesses, counterexample successors, and vacuous truth.
 - Keep an anonymous browser-local guest history and export it as a JSON backup.
+- Record structurally distinct successful solutions per mission up to finite
+  Kripke-model isomorphism, so renaming worlds does not inflate the count.
 - Turn the current sandbox into a versioned custom mission, choose which editor
   parts remain unlocked, add size and frame-property constraints, predictions,
   required or forbidden edges and atoms, and an optional edge bonus, then share
@@ -57,7 +59,7 @@ model-building recap. Selected lessons require a prediction before verification.
 
 ### Campaigns
 
-Six campaigns contain 32 missions organized by objective type:
+Six campaigns contain 33 missions organized by objective type:
 
 - Local Models & Countermodels
 - Global Model Building
@@ -75,6 +77,9 @@ semantic check succeeds.
 Countervaluation-choice missions present complete atom assignments per world
 and require the player to select the assignment that distinguishes or refutes
 the configured formula.
+Candidate-model missions present several small pointed Kripke models side by
+side, including their valuations and explicit relations, and require a semantic
+choice rather than an edit to the active workspace.
 
 ### Guide
 

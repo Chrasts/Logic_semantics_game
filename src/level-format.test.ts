@@ -99,4 +99,18 @@ describe('custom mission format', () => {
     delete invalid.level.prediction.countervaluationChoices[0].valuation.w1
     expect(() => parseCustomLevelFile(invalid)).toThrow(/every mission world/i)
   })
+
+  it('validates candidate models and their relations', () => {
+    const comparison: GameLevel = {
+      ...level,
+      prediction: { kind: 'model-choice', prompt: 'Which model?', expectedChoice: 'A', mustBeCorrect: true, modelChoices: [
+        { id: 'A', evaluationWorld: 'w0', worlds: [{ id: 'w0', atoms: '' }, { id: 'w1', atoms: 'p' }], edges: [{ from: 'w0', to: 'w1' }] },
+        { id: 'B', evaluationWorld: 'w0', worlds: [{ id: 'w0', atoms: '' }], edges: [] },
+      ] },
+    }
+    expect(parseCustomLevelFile(JSON.parse(serializeCustomLevel(comparison))).prediction).toEqual(comparison.prediction)
+    const invalid = JSON.parse(serializeCustomLevel(comparison))
+    invalid.level.prediction.modelChoices[0].edges[0].to = 'missing'
+    expect(() => parseCustomLevelFile(invalid)).toThrow(/unknown world/i)
+  })
 })

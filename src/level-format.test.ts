@@ -63,4 +63,40 @@ describe('custom mission format', () => {
     file.level.prediction = { kind: 'counterexample-world', prompt: 'Where?' }
     expect(() => parseCustomLevelFile(file)).toThrow(/model-global/i)
   })
+
+  it('round-trips a baseline-relative semantic change budget', () => {
+    const budgeted = { ...level, constraints: { ...level.constraints, maximumChanges: 2 } }
+    expect(parseCustomLevelFile(JSON.parse(serializeCustomLevel(budgeted))).constraints?.maximumChanges).toBe(2)
+  })
+
+  it('round-trips a comparison formula and rejects correspondence mixing', () => {
+    const equivalence = { ...level, comparisonFormula: 'p', formula: 'box p' }
+    expect(parseCustomLevelFile(JSON.parse(serializeCustomLevel(equivalence))).comparisonFormula).toBe('p')
+    const invalid = { ...equivalence, scope: 'correspondence' as const, correspondencePreset: 't' as const }
+    expect(() => parseCustomLevelFile(JSON.parse(serializeCustomLevel(invalid)))).toThrow(/cannot be combined/i)
+  })
+
+  it('validates a required frame-property interaction', () => {
+    const diagnostic: GameLevel = {
+      ...level,
+      prediction: { kind: 'frame-property', prompt: 'Which property?', expectedProperty: 'symmetric', propertyChoices: ['symmetric', 'transitive'], mustBeCorrect: true },
+    }
+    expect(parseCustomLevelFile(JSON.parse(serializeCustomLevel(diagnostic))).prediction).toEqual(diagnostic.prediction)
+    const invalid = JSON.parse(serializeCustomLevel(diagnostic))
+    invalid.level.prediction.propertyChoices = ['transitive', 'serial']
+    expect(() => parseCustomLevelFile(invalid)).toThrow(/answer choices/i)
+  })
+
+  it('validates explicit countervaluation choices', () => {
+    const countervaluation: GameLevel = {
+      ...level,
+      prediction: { kind: 'countervaluation', prompt: 'Which valuation?', expectedChoice: 'A', mustBeCorrect: true, countervaluationChoices: [
+        { id: 'A', valuation: { w0: [], w1: ['p'] } }, { id: 'B', valuation: { w0: ['p'], w1: [] } },
+      ] },
+    }
+    expect(parseCustomLevelFile(JSON.parse(serializeCustomLevel(countervaluation))).prediction).toEqual(countervaluation.prediction)
+    const invalid = JSON.parse(serializeCustomLevel(countervaluation))
+    delete invalid.level.prediction.countervaluationChoices[0].valuation.w1
+    expect(() => parseCustomLevelFile(invalid)).toThrow(/every mission world/i)
+  })
 })

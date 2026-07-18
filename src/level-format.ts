@@ -58,11 +58,14 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
   }
   const formula = requiredText('formula')
   parseFormula(formula)
+  const comparisonFormula = typeof source.comparisonFormula === 'string' && source.comparisonFormula.trim() ? source.comparisonFormula.trim() : undefined
+  if (comparisonFormula) parseFormula(comparisonFormula)
   if (!scopes.has(source.scope as ObjectiveScope)) throw new Error('Invalid custom mission objective scope.')
   const correspondencePreset = typeof source.correspondencePreset === 'string' && ['t', 'd', 'b', '4', '5'].includes(source.correspondencePreset)
     ? source.correspondencePreset as GameLevel['correspondencePreset']
     : undefined
   if (source.scope === 'correspondence' && !correspondencePreset) throw new Error('A correspondence mission needs a supported axiom preset.')
+  if (source.scope === 'correspondence' && comparisonFormula) throw new Error('Formula equivalence cannot be combined with a correspondence mission.')
   if (typeof source.targetTruth !== 'boolean') throw new Error('Custom mission targetTruth must be Boolean.')
   if (!Array.isArray(source.worlds) || source.worlds.length === 0) throw new Error('A custom mission needs at least one world.')
   const worlds = source.worlds.map((item, index) => {
@@ -118,6 +121,7 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
     const result: ConstructionConstraints = {
       minimumWorlds: count('minimumWorlds'), maximumWorlds: count('maximumWorlds'),
       minimumEdges: count('minimumEdges'), maximumEdges: count('maximumEdges'),
+      maximumChanges: count('maximumChanges'),
       requiredEdges: relationList('requiredEdges'), forbiddenEdges: relationList('forbiddenEdges'),
       requiredAtoms: atomMap('requiredAtoms'), forbiddenAtoms: atomMap('forbiddenAtoms'),
       requiredProperties: propertyList('requiredProperties'), forbiddenProperties: propertyList('forbiddenProperties'),
@@ -137,10 +141,34 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
   const prediction = predictionSource ? {
     kind: predictionSource.kind,
     prompt: predictionSource.prompt,
+    expectedProperty: predictionSource.expectedProperty,
+    propertyChoices: predictionSource.propertyChoices,
+    mustBeCorrect: predictionSource.mustBeCorrect,
+    expectedChoice: predictionSource.expectedChoice,
+    countervaluationChoices: predictionSource.countervaluationChoices,
   } : undefined
-  if (prediction && !['truth', 'counterexample-world'].includes(String(prediction.kind))) throw new Error('Invalid custom mission prediction kind.')
+  if (prediction && !['truth', 'counterexample-world', 'frame-property', 'countervaluation'].includes(String(prediction.kind))) throw new Error('Invalid custom mission prediction kind.')
   if (prediction && (typeof prediction.prompt !== 'string' || !prediction.prompt.trim())) throw new Error('A custom mission prediction needs a prompt.')
   if (prediction?.kind === 'counterexample-world' && source.scope !== 'model') throw new Error('Counterexample-world prediction requires model-global scope.')
+  if (prediction?.mustBeCorrect !== undefined && typeof prediction.mustBeCorrect !== 'boolean') throw new Error('Invalid prediction correctness requirement.')
+  if (prediction?.kind === 'frame-property') {
+    if (!frameProperties.has(prediction.expectedProperty as FramePropertyName)) throw new Error('A frame-property interaction needs a valid expected property.')
+    if (!Array.isArray(prediction.propertyChoices) || prediction.propertyChoices.length < 2 || prediction.propertyChoices.some((entry) => !frameProperties.has(entry as FramePropertyName)) || !prediction.propertyChoices.includes(prediction.expectedProperty)) throw new Error('A frame-property interaction needs valid answer choices containing the expected property.')
+  }
+  if (prediction?.kind === 'countervaluation') {
+    if (typeof prediction.expectedChoice !== 'string' || !prediction.expectedChoice.trim()) throw new Error('A countervaluation interaction needs an expected choice.')
+    if (!Array.isArray(prediction.countervaluationChoices) || prediction.countervaluationChoices.length < 2) throw new Error('A countervaluation interaction needs at least two choices.')
+    const choiceIds = new Set<string>()
+    for (const item of prediction.countervaluationChoices) {
+      const choice = object(item, 'Invalid countervaluation choice.')
+      if (typeof choice.id !== 'string' || !choice.id.trim() || choiceIds.has(choice.id)) throw new Error('Countervaluation choice ids must be non-empty and unique.')
+      choiceIds.add(choice.id)
+      const choiceValuation = object(choice.valuation, 'Invalid countervaluation choice valuation.')
+      if (Object.keys(choiceValuation).some((world) => !ids.includes(world)) || ids.some((world) => !Array.isArray(choiceValuation[world]))) throw new Error('Every countervaluation choice must assign atoms to every mission world.')
+      for (const atoms of Object.values(choiceValuation)) if ((atoms as unknown[]).some((atom) => typeof atom !== 'string' || !/^[A-Za-z][A-Za-z0-9_]*$/u.test(atom))) throw new Error('Invalid atom in a countervaluation choice.')
+    }
+    if (!choiceIds.has(prediction.expectedChoice)) throw new Error('The expected countervaluation choice must be present among the choices.')
+  }
   const constraints = parseConstraints(source.constraints, 'custom mission constraints')
   const bonusConstraints = parseConstraints(source.bonusConstraints, 'custom mission bonus constraints')
   if (constraints) assertCompatibleAuthoredConstraints(constraints)
@@ -149,7 +177,7 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
     id: requiredText('id'), chapter: requiredText('chapter'), title: requiredText('title'), concept: requiredText('concept'),
     briefing: typeof source.briefing === 'string' ? source.briefing : undefined,
     learningObjective: typeof source.learningObjective === 'string' ? source.learningObjective : undefined,
-    instruction: requiredText('instruction'), formula, scope: source.scope as ObjectiveScope,
+    instruction: requiredText('instruction'), formula, comparisonFormula, scope: source.scope as ObjectiveScope,
     targetTruth: source.targetTruth, evaluationWorld: source.evaluationWorld,
     correspondencePreset, worlds, edges, frameRules,
     constraints, bonusConstraints,
@@ -204,7 +232,11 @@ export function assertValidReferenceSolution(level: GameLevel, solution: Referen
     transitive: rules.transitive === 'enforce', euclidean: rules.euclidean === 'enforce',
   })
   const valuation = Object.fromEntries(solution.worlds.map(({ id, atoms }) => [id, atoms.split(/[\s,]+/u).filter(Boolean)]))
-  const violations = level.constraints ? [...checkConstructionConstraints({ worldIds, explicitEdges: solution.edges, effectiveEdges, valuation }, level.constraints)] : []
+  const baseline = {
+    worldIds: level.worlds.map(({ id }) => id), explicitEdges: level.edges,
+    valuation: Object.fromEntries(level.worlds.map(({ id, atoms }) => [id, atoms.split(/[\s,]+/u).filter(Boolean)])),
+  }
+  const violations = level.constraints ? [...checkConstructionConstraints({ worldIds, explicitEdges: solution.edges, effectiveEdges, valuation, baseline }, level.constraints)] : []
   for (const [property, mode] of Object.entries(rules)) {
     if (mode !== 'off' && !checkFrameProperty(worldIds, effectiveEdges, property as FramePropertyName).holds) violations.push(`The ${property} frame rule is not satisfied.`)
   }
@@ -215,6 +247,6 @@ export function assertValidReferenceSolution(level: GameLevel, solution: Referen
   const verdict = verifyObjective({
     scope: level.scope, targetTruth: level.targetTruth, evaluationWorld: solution.evaluationWorld,
     correspondenceProperty: level.correspondencePreset ? correspondenceProperties[level.correspondencePreset] : undefined,
-  }, { worldIds, edges: effectiveEdges, valuation, formula: parseFormula(level.formula) })
+  }, { worldIds, edges: effectiveEdges, valuation, formula: parseFormula(level.formula), comparisonFormula: level.comparisonFormula ? parseFormula(level.comparisonFormula) : undefined })
   if (!verdict.success) throw new Error(`Reference solution does not meet the objective: ${verdict.formula.detail}`)
 }

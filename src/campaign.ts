@@ -9,12 +9,21 @@ export interface GameLevel {
   readonly concept: string
   readonly learningObjective?: string
   readonly prediction?: {
-    readonly kind: 'truth' | 'counterexample-world'
+    readonly kind: 'truth' | 'counterexample-world' | 'frame-property' | 'countervaluation'
     readonly prompt: string
+    readonly expectedProperty?: FramePropertyName
+    readonly propertyChoices?: readonly FramePropertyName[]
+    readonly mustBeCorrect?: boolean
+    readonly expectedChoice?: string
+    readonly countervaluationChoices?: readonly {
+      readonly id: string
+      readonly valuation: Readonly<Record<string, readonly string[]>>
+    }[]
   }
   readonly briefing?: string
   readonly instruction: string
   readonly formula: string
+  readonly comparisonFormula?: string
   readonly scope: ObjectiveScope
   readonly targetTruth: boolean
   readonly evaluationWorld: string
@@ -200,6 +209,14 @@ export const campaignTracks: readonly CampaignTrack[] = [
         worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 60 } }, { id: 'w1', atoms: 'p q', position: { x: 90, y: 230 } }, { id: 'w2', atoms: 'p', position: { x: 400, y: 230 } }],
         edges: [], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 2, maximumEdges: 3 }, bonusConstraints: { maximumEdges: 2 }, editable: ['edges'],
       },
+      {
+        id: 'local-one-change-repair', chapter: 'Local Models', title: 'One-change repair', concept: 'Minimal semantic repair',
+        learningObjective: 'Repair a failed necessity claim while distinguishing relation edits from valuation edits.',
+        briefing: 'A semantic change is one added or removed world, explicit edge, or atom membership. Moving a world is visual only and does not count.',
+        instruction: 'Make box p true at w0 using at most one semantic change.', formula: 'box p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+        worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 60 } }, { id: 'w1', atoms: 'p', position: { x: 90, y: 230 } }, { id: 'w2', atoms: '', position: { x: 400, y: 230 } }],
+        edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], constraints: { minimumWorlds: 3, maximumWorlds: 3, maximumChanges: 1 }, editable: ['valuations', 'edges'],
+      },
     ],
   },
   {
@@ -259,6 +276,16 @@ export const campaignTracks: readonly CampaignTrack[] = [
         worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 60 } }, { id: 'w1', atoms: '', position: { x: 90, y: 230 } }, { id: 'w2', atoms: '', position: { x: 400, y: 230 } }],
         edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], constraints: { minimumWorlds: 3, maximumWorlds: 3, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], maximumEdges: 2 }, bonusConstraints: { forbiddenAtoms: { w0: ['p'], w2: ['p'] } }, editable: ['valuations'],
       },
+      {
+        id: 'choose-countervaluation-t', chapter: 'Countervaluations', title: 'Choose a countervaluation', concept: 'Countervaluation as a concrete assignment',
+        learningObjective: 'Identify a valuation that makes a modal formula false on a fixed pointed frame.',
+        instruction: 'Choose the valuation that refutes box p -> p at w0.', formula: 'box p -> p', scope: 'pointed', targetTruth: false, evaluationWorld: 'w0',
+        prediction: {
+          kind: 'countervaluation', prompt: 'Which valuation makes box p -> p false at w0?', expectedChoice: 'A', mustBeCorrect: true,
+          countervaluationChoices: [{ id: 'A', valuation: { w0: [] } }, { id: 'B', valuation: { w0: ['p'] } }],
+        },
+        worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 130 } }], edges: [], constraints: { minimumWorlds: 1, maximumWorlds: 1, maximumEdges: 0 }, editable: [],
+      },
     ],
   },
   {
@@ -288,6 +315,14 @@ export const campaignTracks: readonly CampaignTrack[] = [
         instruction: 'Complete the connected frame so all three frame constraints hold and axiom 5 is valid.', formula: '◇p → □◇p', scope: 'frame', targetTruth: true, evaluationWorld: 'w0',
         worlds: [{ id: 'w0', atoms: '', position: { x: 70, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 260, y: 130 } }, { id: 'w2', atoms: '', position: { x: 450, y: 130 } }],
         edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }], frameRules: { reflexive: 'validate', symmetric: 'validate', transitive: 'validate' }, constraints: { minimumWorlds: 3, maximumWorlds: 3, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }], maximumEdges: 9 }, editable: ['edges'],
+      },
+      {
+        id: 'frame-identify-symmetry', chapter: 'Frame Engineering', title: 'Diagnose the relation', concept: 'Identify a missing frame property',
+        learningObjective: 'Distinguish symmetry from seriality and transitivity by inspecting a fixed relation.',
+        instruction: 'Inspect the fixed frame and identify the property it lacks among the listed alternatives.', formula: 'p -> p', scope: 'frame', targetTruth: true, evaluationWorld: 'w0',
+        prediction: { kind: 'frame-property', prompt: 'Which property fails: symmetry, transitivity, or seriality?', expectedProperty: 'symmetric', propertyChoices: ['symmetric', 'transitive', 'serial'], mustBeCorrect: true },
+        worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
+        edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w1' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 2, maximumEdges: 2 }, editable: [],
       },
     ],
   },
@@ -345,6 +380,33 @@ export const campaignTracks: readonly CampaignTrack[] = [
         id: 'correspondence-break-five', chapter: 'Correspondence', title: 'Break Euclideanness', concept: 'A bare fork produces a countervaluation to 5',
         instruction: 'Remove the cluster edges while retaining the fork so Euclideanness and axiom 5 both fail.', formula: '◇p → □◇p', scope: 'correspondence', targetTruth: true, evaluationWorld: 'w0', correspondencePreset: '5',
         worlds: [{ id: 'w0', atoms: '', position: { x: 245, y: 70 } }, { id: 'w1', atoms: 'p', position: { x: 90, y: 230 } }, { id: 'w2', atoms: '', position: { x: 400, y: 230 } }], edges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }, { from: 'w1', to: 'w1' }, { from: 'w1', to: 'w2' }, { from: 'w2', to: 'w1' }, { from: 'w2', to: 'w2' }], constraints: { minimumWorlds: 3, maximumWorlds: 3, requiredEdges: [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], maximumEdges: 2, forbiddenProperties: ['euclidean'] }, editable: ['edges'],
+      },
+    ],
+  },
+  {
+    id: 'equivalence', title: 'Formula Equivalence Lab',
+    description: 'Make two formulas agree locally, throughout a displayed model, or under every valuation on a frame.',
+    levels: [
+      {
+        id: 'equivalence-pointed-repair', chapter: 'Equivalence', title: 'Agreement at one world', concept: 'Pointed formula equivalence',
+        learningObjective: 'Distinguish agreement at the evaluation world from agreement elsewhere.',
+        instruction: 'Make box p and p have the same truth value at w0.', formula: 'box p', comparisonFormula: 'p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+        worlds: [{ id: 'w0', atoms: 'p', position: { x: 100, y: 130 } }, { id: 'w1', atoms: '', position: { x: 390, y: 130 } }],
+        edges: [{ from: 'w0', to: 'w1' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumChanges: 1 }, editable: ['valuations', 'edges'],
+      },
+      {
+        id: 'equivalence-model-diamond', chapter: 'Equivalence', title: 'Agreement throughout M', concept: 'Model-global equivalence under a fixed valuation',
+        learningObjective: 'Make two formulas agree at every world while retaining the displayed valuation.',
+        instruction: 'Make diamond p and p equivalent throughout the model.', formula: 'diamond p', comparisonFormula: 'p', scope: 'model', targetTruth: true, evaluationWorld: 'w0',
+        worlds: [{ id: 'w0', atoms: 'p', position: { x: 100, y: 130 } }, { id: 'w1', atoms: '', position: { x: 390, y: 130 } }],
+        edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 2 }, editable: ['edges'],
+      },
+      {
+        id: 'equivalence-frame-identity', chapter: 'Equivalence', title: 'Agreement under every valuation', concept: 'Frame equivalence',
+        learningObjective: 'Distinguish frame equivalence from agreement under one displayed valuation.',
+        instruction: 'Make box p and p equivalent under every valuation on the frame.', formula: 'box p', comparisonFormula: 'p', scope: 'frame', targetTruth: true, evaluationWorld: 'w0',
+        worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
+        edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, maximumEdges: 2 }, editable: ['edges'],
       },
     ],
   },

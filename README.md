@@ -15,6 +15,9 @@ and sandbox models and completed missions are saved locally in the browser.
 - Assign propositional atoms and draw accessibility relations.
 - Evaluate formulas at a selected world or throughout a model.
 - Check validity on a finite frame across every possible valuation.
+- Compare two formulas at one world, throughout the displayed model, or under
+  every valuation on a finite frame, with a distinguishing world and valuation
+  when they are not equivalent.
 - Work with reflexive, symmetric, transitive, Euclidean, serial, irreflexive,
   and acyclic relations.
 - Validate relational properties or enforce supported relational closures.
@@ -29,7 +32,10 @@ and sandbox models and completed missions are saved locally in the browser.
   required or forbidden edges and atoms, and an optional edge bonus, then share
   or launch the mission as JSON. Authors can capture a separate starting state
   and a mathematically verified reference solution; importing the mission loads
-  only the player start.
+  only the player start. The author can restore that start or playtest the
+  mission immediately in the same locked player workspace used by imports.
+- Define repair missions with a maximum semantic-change budget measured against
+  the initial model (worlds, explicit edges, and atom memberships).
 
 The formula editor accepts `¬`, `∧`, `∨`, `→`, `□`, and `◇`, as well as the text
 alternatives `!`, `&`, `|`, `->`, `box`, and `diamond`.
@@ -51,17 +57,24 @@ model-building recap. Selected lessons require a prediction before verification.
 
 ### Campaigns
 
-Five campaigns contain 26 missions organized by objective type:
+Six campaigns contain 32 missions organized by objective type:
 
 - Local Models & Countermodels
 - Global Model Building
 - Countervaluations
 - Frame Engineering
 - Correspondence Lab
+- Formula Equivalence Lab
 
 Missions can restrict worlds, relations, valuations, editable inputs, and frame
 properties. Some include optional bonus constraints revealed only after the
 primary objective is completed. The game provides no solution hints beforehand.
+Selected missions also require the player to identify a relational property;
+an incorrect required answer prevents completion even when the accompanying
+semantic check succeeds.
+Countervaluation-choice missions present complete atom assignments per world
+and require the player to select the assignment that distinguishes or refutes
+the configured formula.
 
 ### Guide
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkConstructionConstraints, describeConstructionConstraints } from './constraints'
+import { checkConstructionConstraints, countConstructionChanges, describeConstructionConstraints } from './constraints'
 
 const input = {
   worldIds: ['w0', 'w1'],
@@ -9,6 +9,14 @@ const input = {
 }
 
 describe('construction constraints', () => {
+  it('counts world, explicit-edge, and atom-membership edits against a baseline', () => {
+    const baseline = { worldIds: ['w0', 'w1'], explicitEdges: [{ from: 'w0', to: 'w1' }], valuation: { w0: ['p'], w1: [] } }
+    const changed = { worldIds: ['w0', 'w1'], explicitEdges: [{ from: 'w1', to: 'w0' }], effectiveEdges: [{ from: 'w1', to: 'w0' }], valuation: { w0: [], w1: ['q'] }, baseline }
+    expect(countConstructionChanges(changed)).toBe(4)
+    expect(checkConstructionConstraints(changed, { maximumChanges: 3 })).toEqual([
+      'Use at most 3 semantic changes from the initial model; the current construction uses 4.',
+    ])
+  })
   it('checks structural and valuation restrictions together', () => {
     expect(checkConstructionConstraints(input, {
       minimumWorlds: 2,

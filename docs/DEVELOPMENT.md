@@ -86,6 +86,16 @@ successor checked by `□` or `◇`, rather than retaining only the first decisi
 branch. This makes the trace useful for teaching while preserving the same
 truth-functional result.
 
+## Formula-equivalence objectives
+
+An optional `comparisonFormula` changes the configured semantic target from a
+single-formula truth check to an equivalence check. Pointed equivalence compares
+both truth values at the evaluation world. Model-global equivalence compares
+them at every world under the displayed valuation. Frame equivalence checks the
+biconditional at every world under every valuation and returns a distinguishing
+countervaluation when it fails. Correspondence objectives intentionally cannot
+be combined with formula equivalence.
+
 ## Optional mission bonuses
 
 A level may define `bonusConstraints` in addition to its required construction
@@ -101,6 +111,18 @@ they are compared with the structured verdict after the construction has been
 evaluated. This discourages blind trial and error while keeping solution hints
 out of the mission briefing.
 
+The `frame-property` interaction presents an author-specified set of relational
+properties and compares the player's answer with `expectedProperty`. With
+`mustBeCorrect: true`, the semantic objective and the answer must both succeed
+before completion. The expected answer remains level metadata, not an inference
+silently guessed from a relation that may violate several properties at once.
+
+The `countervaluation` interaction stores two or more complete valuations with
+stable choice identifiers. Import validation requires every choice to assign an
+atom list to every mission world and requires `expectedChoice` to reference one
+of those choices. With `mustBeCorrect`, selecting the correct concrete
+assignment is part of completion rather than optional prediction feedback.
+
 ## Custom mission files
 
 Custom missions use the versioned `logic-model-builder-level` JSON format. The
@@ -111,6 +133,11 @@ required frame-rule modes, and active relational rules. Importing a mission
 loads only the initial state; the solution is metadata and is never applied to
 the player workspace. Because JSON is inspectable, it should not be treated as
 secret or tamper-proof answer storage.
+
+`Playtest as player` validates the same serialized package used for download,
+then launches its initial snapshot through the normal custom-mission loader.
+Leaving the playtest restores the author workspace. `Restore captured start`
+is intentionally destructive and therefore asks for confirmation.
 
 The editor also captures the author-facing title, instruction and learning
 objective, plus the parts a player may edit. Authors can set world and
@@ -124,6 +151,12 @@ constraints, prediction, bonus, and edit permissions before opening the mission.
 
 The editor rejects constraints that require and forbid the same edge, atom, or
 frame property before a mission file is exported or launched.
+
+`maximumChanges` is a baseline-relative construction constraint. It counts the
+symmetric differences in world identifiers, distinct explicit relation pairs,
+and `(world, atom)` memberships. Coordinates are presentation data and never
+count as semantic changes. This deliberately describes a semantic edit budget,
+not mouse clicks or undo-history entries.
 
 ## Current technical scope
 

@@ -103,6 +103,7 @@ const defaultFrameRules: FrameRules = {
 
 interface AuthorStartSnapshot extends ModelSnapshot {
   readonly formulaSource: string
+  readonly comparisonFormulaSource: string
   readonly targetTruth: boolean
   readonly evaluationScope: EvaluationScope
   readonly selectedCorrespondence: string
@@ -119,6 +120,7 @@ const correspondencePresets = [
 
 interface SandboxDraft {
   readonly formulaSource: string
+  readonly comparisonFormulaSource?: string
   readonly worlds: EditableWorld[]
   readonly edges: EditableEdge[]
   readonly evaluationWorld: string
@@ -223,6 +225,7 @@ export function App() {
   const [completedLevelIds, setCompletedLevelIds] = useState<ReadonlySet<string>>(loadCampaignProgress)
   const [guestProfile, setGuestProfile] = useState<GuestProfile>(loadGuestProfile)
   const [formulaSource, setFormulaSource] = useState(initialDraft?.formulaSource ?? '◇p')
+  const [comparisonFormulaSource, setComparisonFormulaSource] = useState(initialDraft?.comparisonFormulaSource ?? '')
   const [worlds, setWorlds] = useState(initialDraft?.worlds ?? initialWorlds)
   const [edges, setEdges] = useState(initialDraft?.edges ?? initialEdges)
   const [evaluationWorld, setEvaluationWorld] = useState(initialDraft?.evaluationWorld ?? 'w0')
@@ -247,10 +250,11 @@ export function App() {
   const [levelInstruction, setLevelInstruction] = useState('Satisfy the configured objective.')
   const [levelLearningObjective, setLevelLearningObjective] = useState('Explore this modal construction.')
   const [levelEditable, setLevelEditable] = useState<ReadonlySet<string>>(new Set(['worlds', 'valuations', 'edges', 'constraints', 'evaluation']))
-  const [levelBounds, setLevelBounds] = useState({ minimumWorlds: '', maximumWorlds: '', minimumEdges: '', maximumEdges: '' })
+  const [levelBounds, setLevelBounds] = useState({ minimumWorlds: '', maximumWorlds: '', minimumEdges: '', maximumEdges: '', maximumChanges: '' })
   const [levelRequiredProperties, setLevelRequiredProperties] = useState<ReadonlySet<FramePropertyName>>(new Set())
   const [levelForbiddenProperties, setLevelForbiddenProperties] = useState<ReadonlySet<FramePropertyName>>(new Set())
-  const [levelPredictionKind, setLevelPredictionKind] = useState<'none' | 'truth' | 'counterexample-world'>('none')
+  const [levelPredictionKind, setLevelPredictionKind] = useState<'none' | 'truth' | 'counterexample-world' | 'frame-property'>('none')
+  const [levelPredictionProperty, setLevelPredictionProperty] = useState<FramePropertyName>('reflexive')
   const [levelBonusMaximumEdges, setLevelBonusMaximumEdges] = useState('')
   const [levelRequiredEdges, setLevelRequiredEdges] = useState('')
   const [levelForbiddenEdges, setLevelForbiddenEdges] = useState('')
@@ -325,9 +329,9 @@ export function App() {
 
   useEffect(() => {
     if (gameMode !== 'sandbox') return
-    const draft: SandboxDraft = { formulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
+    const draft: SandboxDraft = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
     try { localStorage.setItem(storageKey, JSON.stringify(draft)) } catch { /* Persistence is optional in restricted browsers. */ }
-  }, [formulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope, gameMode])
+  }, [formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope, gameMode])
 
   useEffect(() => {
     try { localStorage.setItem(campaignProgressKey, JSON.stringify([...completedLevelIds])) } catch { /* Progress remains available for this session. */ }
@@ -580,6 +584,7 @@ export function App() {
     if (!level) return
     setCampaignLevelIndex(index)
     setFormulaSource(level.formula)
+    setComparisonFormulaSource(level.comparisonFormula ?? '')
     setWorlds(level.worlds.map((world, key) => ({ ...world, key })))
     setEdges(level.edges.map((edge, key) => ({ ...edge, key })))
     setEvaluationWorld(level.evaluationWorld)
@@ -602,7 +607,7 @@ export function App() {
 
   const enterGuidedMode = (mode: 'tutorial' | 'campaign') => {
     if (gameMode === 'sandbox') {
-      sandboxBeforeCampaign.current = { formulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
+      sandboxBeforeCampaign.current = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
     }
     setGameMode(mode)
     const levels = mode === 'tutorial' ? tutorialLevels : campaignTracks[campaignTrackIndex].levels
@@ -611,7 +616,7 @@ export function App() {
 
   const startGuidedLevel = (mode: 'tutorial' | 'campaign', index: number, trackIndex = campaignTrackIndex) => {
     if (gameMode === 'sandbox') {
-      sandboxBeforeCampaign.current = { formulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
+      sandboxBeforeCampaign.current = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
     }
     if (mode === 'campaign') setCampaignTrackIndex(trackIndex)
     if (mode === 'campaign') setPlayingTrackIndex(trackIndex)
@@ -637,6 +642,7 @@ export function App() {
     setGameMode('sandbox')
     if (!draft) return
     setFormulaSource(draft.formulaSource)
+    setComparisonFormulaSource(draft.comparisonFormulaSource ?? '')
     setWorlds(draft.worlds)
     setEdges(draft.edges)
     setEvaluationWorld(draft.evaluationWorld)
@@ -663,6 +669,7 @@ export function App() {
     setTargetTruth(true)
     setFrameRules(defaultFrameRules)
     setEvaluationScope('pointed')
+    setComparisonFormulaSource('')
     setSelectedCorrespondence('')
     setNextWorldKey(2)
     setNextEdgeKey(1)
@@ -676,6 +683,7 @@ export function App() {
     if (!preset) return
     saveHistoryPoint()
     setFormulaSource(preset.formula)
+    setComparisonFormulaSource('')
     setEvaluationScope('correspondence')
     setTargetTruth(true)
     setResult(null)
@@ -716,6 +724,11 @@ export function App() {
         explicitEdges,
         effectiveEdges: normalizedEdges,
         valuation: valuations,
+        baseline: activeLevel ? {
+          worldIds: activeLevel.worlds.map(({ id }) => id),
+          explicitEdges: activeLevel.edges,
+          valuation: Object.fromEntries(activeLevel.worlds.map(({ id, atoms }) => [id, atoms.split(/[\s,]+/u).filter(Boolean)])),
+        } : undefined,
       }
       const constraintViolation = activeLevel?.constraints && checkConstructionConstraints(constraintInput, activeLevel.constraints)[0]
       if (constraintViolation) {
@@ -745,6 +758,7 @@ export function App() {
       }
 
       const preset = correspondencePresets.find(({ id }) => id === selectedCorrespondence)
+      const comparisonFormula = comparisonFormulaSource.trim() ? parseFormula(comparisonFormulaSource) : undefined
       const verdict = verifyObjective({
         scope: evaluationScope,
         targetTruth,
@@ -755,6 +769,7 @@ export function App() {
         edges: normalizedEdges,
         valuation: valuations,
         formula: parseFormula(formulaSource),
+        comparisonFormula,
       })
       const bonusViolations = verdict.success && activeLevel?.bonusConstraints
         ? checkConstructionConstraints(constraintInput, activeLevel.bonusConstraints)
@@ -763,20 +778,30 @@ export function App() {
         ? (() => {
             const correct = activeLevel.prediction.kind === 'truth'
               ? predictionAnswer === String(verdict.formula.holds)
-              : Boolean(verdict.formula.truthByWorld?.some(({ worldId, value }) => worldId === predictionAnswer && !value))
+              : activeLevel.prediction.kind === 'counterexample-world'
+                ? Boolean(verdict.formula.truthByWorld?.some(({ worldId, value }) => worldId === predictionAnswer && !value))
+                : activeLevel.prediction.kind === 'frame-property'
+                  ? predictionAnswer === activeLevel.prediction.expectedProperty
+                  : predictionAnswer === activeLevel.prediction.expectedChoice
             return {
               correct,
               detail: correct
                 ? 'Your prediction matched the semantic evaluation.'
                 : activeLevel.prediction.kind === 'truth'
                   ? `You predicted ${predictionAnswer}, but the formula evaluated as ${verdict.formula.holds}.`
-                  : `${predictionAnswer} is not a counterexample world under the evaluated valuation.`,
+                  : activeLevel.prediction.kind === 'counterexample-world'
+                    ? `${predictionAnswer} is not a counterexample world under the evaluated valuation.`
+                    : activeLevel.prediction.kind === 'frame-property'
+                      ? `${predictionAnswer} is not the required relational property.`
+                      : `${predictionAnswer} is not the countervaluation that refutes the formula.`,
             }
           })()
         : undefined
+      const predictionRequiredAndWrong = Boolean(activeLevel?.prediction?.mustBeCorrect && prediction && !prediction.correct)
+      const overallSuccess = verdict.success && !predictionRequiredAndWrong
       setResult({
-        kind: verdict.success ? 'success' : 'failure',
-        message: verdict.headline,
+        kind: overallSuccess ? 'success' : 'failure',
+        message: predictionRequiredAndWrong ? 'Required answer incorrect' : verdict.headline,
         detail: verdict.formula.summary,
         verdict,
         bonus: verdict.success && activeLevel?.bonusConstraints ? {
@@ -785,8 +810,8 @@ export function App() {
         } : undefined,
         prediction,
       })
-      recordAttempt(verdict.success, verdict.success && activeLevel?.bonusConstraints ? bonusViolations.length === 0 : undefined)
-      if (verdict.success && activeLevel) {
+      recordAttempt(overallSuccess, overallSuccess && activeLevel?.bonusConstraints ? bonusViolations.length === 0 : undefined)
+      if (overallSuccess && activeLevel) {
         setCompletedLevelIds((current) => new Set([...current, activeLevel.id]))
       }
     } catch (error) {
@@ -799,6 +824,7 @@ export function App() {
     format: 'logic-model-builder',
     version: 1,
     formula: formulaSource,
+    comparisonFormula: comparisonFormulaSource.trim() || undefined,
     scope: evaluationScope,
     targetTruth,
     evaluationWorld,
@@ -809,7 +835,7 @@ export function App() {
   }, null, 2)
 
   const currentAuthorSnapshot = (): AuthorStartSnapshot => ({
-    ...currentSnapshot(), formulaSource, targetTruth, evaluationScope, selectedCorrespondence,
+    ...currentSnapshot(), formulaSource, comparisonFormulaSource, targetTruth, evaluationScope, selectedCorrespondence,
   })
 
   const customLevelFromSandbox = (): GameLevel => {
@@ -819,6 +845,7 @@ export function App() {
     const constraints = {
       minimumWorlds: numericBound(levelBounds.minimumWorlds), maximumWorlds: numericBound(levelBounds.maximumWorlds),
       minimumEdges: numericBound(levelBounds.minimumEdges), maximumEdges: numericBound(levelBounds.maximumEdges),
+      maximumChanges: numericBound(levelBounds.maximumChanges),
       requiredProperties: [...levelRequiredProperties], forbiddenProperties: [...levelForbiddenProperties],
       requiredEdges: parseAuthoredEdges(levelRequiredEdges, worldIds), forbiddenEdges: parseAuthoredEdges(levelForbiddenEdges, worldIds),
       requiredAtoms: parseAuthoredAtoms(levelRequiredAtoms, worldIds), forbiddenAtoms: parseAuthoredAtoms(levelForbiddenAtoms, worldIds),
@@ -832,6 +859,7 @@ export function App() {
     learningObjective: levelLearningObjective.trim() || undefined,
     instruction: levelInstruction.trim() || 'Satisfy the configured objective.',
     formula: start.formulaSource,
+    comparisonFormula: start.comparisonFormulaSource.trim() || undefined,
     scope: start.evaluationScope,
     targetTruth: start.targetTruth,
     evaluationWorld: start.evaluationWorld,
@@ -843,7 +871,10 @@ export function App() {
     bonusConstraints: levelBonusMaximumEdges.trim() === '' ? undefined : { maximumEdges: Number(levelBonusMaximumEdges) },
     prediction: levelPredictionKind === 'none' ? undefined : {
       kind: levelPredictionKind,
-      prompt: levelPredictionKind === 'truth' ? `Will ${start.formulaSource} satisfy the configured semantic target?` : `Which world will falsify ${start.formulaSource}?`,
+      prompt: levelPredictionKind === 'truth' ? `Will ${start.formulaSource} satisfy the configured semantic target?` : levelPredictionKind === 'counterexample-world' ? `Which world will falsify ${start.formulaSource}?` : 'Which relational property is the intended answer?',
+      expectedProperty: levelPredictionKind === 'frame-property' ? levelPredictionProperty : undefined,
+      propertyChoices: levelPredictionKind === 'frame-property' ? levelPropertyNames : undefined,
+      mustBeCorrect: levelPredictionKind === 'frame-property' ? true : undefined,
     },
     editable: [...levelEditable] as GameLevel['editable'],
     }
@@ -869,6 +900,37 @@ export function App() {
       setDataMessage('Valid reference solution captured. Players will still begin from the captured mission start.')
     } catch (error) {
       setDataMessage(error instanceof Error ? error.message : 'Could not capture the reference solution.')
+    }
+  }
+
+  const restoreCapturedMissionStart = () => {
+    if (!levelStartSnapshot) return
+    if (!window.confirm('Restore the captured mission start in the workspace? Unsaved workspace changes will be replaced.')) return
+    setFormulaSource(levelStartSnapshot.formulaSource)
+    setComparisonFormulaSource(levelStartSnapshot.comparisonFormulaSource)
+    setTargetTruth(levelStartSnapshot.targetTruth)
+    setEvaluationScope(levelStartSnapshot.evaluationScope)
+    setSelectedCorrespondence(levelStartSnapshot.selectedCorrespondence)
+    restoreSnapshot(levelStartSnapshot)
+    setNextWorldKey(Math.max(-1, ...levelStartSnapshot.worlds.map(({ key }) => key)) + 1)
+    setNextEdgeKey(Math.max(-1, ...levelStartSnapshot.edges.map(({ key }) => key)) + 1)
+    setDataMessage('Captured mission start restored in the workspace.')
+    setShowDataManager(false)
+  }
+
+  const playtestCustomMission = () => {
+    try {
+      if (!levelStartSnapshot) throw new Error('Capture the mission start before playtesting.')
+      const contents = serializedCustomLevel()
+      const level = parseCustomLevelFile(JSON.parse(contents))
+      sandboxBeforeCampaign.current = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
+      setCustomLevel(level)
+      setGameMode('custom')
+      loadLevel(0, [level])
+      setAppView('workspace')
+      setShowDataManager(false)
+    } catch (error) {
+      setDataMessage(error instanceof Error ? error.message : 'Could not start the custom mission playtest.')
     }
   }
 
@@ -899,6 +961,7 @@ export function App() {
     setEvaluationWorld('w0')
     setTargetTruth(true)
     setEvaluationScope('pointed')
+    setComparisonFormulaSource('')
     setFrameRules(defaultFrameRules)
     setNextWorldKey(2)
     setNextEdgeKey(1)
@@ -923,7 +986,7 @@ export function App() {
       }
       if (imported.format === 'logic-model-builder-level') {
         const importedLevel = parseCustomLevelFile(imported)
-        if (gameMode === 'sandbox') sandboxBeforeCampaign.current = { formulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
+        if (gameMode === 'sandbox') sandboxBeforeCampaign.current = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
         setCustomLevel(importedLevel)
         setGameMode('custom')
         setAppView('workspace')
@@ -966,6 +1029,9 @@ export function App() {
       setGameMode('sandbox')
       setAppView('workspace')
       setFormulaSource(imported.formula)
+      const importedComparison = typeof imported.comparisonFormula === 'string' ? imported.comparisonFormula.trim() : ''
+      if (importedComparison) parseFormula(importedComparison)
+      setComparisonFormulaSource(importedComparison)
       setWorlds(importedWorlds)
       setEdges(importedEdges)
       setEvaluationWorld(importedEvaluationWorld)
@@ -1117,6 +1183,10 @@ export function App() {
             <span>Modal formula</span>
             <input disabled={isGuidedMode} value={formulaSource} onChange={(event) => { setFormulaSource(event.target.value); setResult(null) }} spellCheck={false} />
           </label>
+          <label className="field comparison-formula">
+            <span>Comparison formula <small>optional</small></span>
+            <input aria-label="Comparison formula" disabled={isGuidedMode} value={comparisonFormulaSource} placeholder="Leave empty for a single-formula objective" onChange={(event) => { setComparisonFormulaSource(event.target.value); if (event.target.value.trim() && evaluationScope === 'correspondence') setEvaluationScope('frame'); setResult(null) }} spellCheck={false} />
+          </label>
           <div className="symbol-row" aria-label="Insert symbol">
             {['¬', '∧', '∨', '→', '□', '◇'].map((symbol) => (
               <button key={symbol} type="button" disabled={isGuidedMode} className="symbol-button" aria-label={`Insert ${symbol}`} onClick={() => setFormulaSource((value) => value + symbol)}>{symbol}</button>
@@ -1128,14 +1198,14 @@ export function App() {
               <option value="pointed">Pointed model — selected world, current valuation</option>
               <option value="model">Model — all worlds, current valuation</option>
               <option value="frame">Frame — all worlds and all valuations</option>
-              <option value="correspondence">Correspondence — formula validity vs. relation</option>
+              <option value="correspondence" disabled={Boolean(comparisonFormulaSource.trim())}>Correspondence — formula validity vs. relation</option>
             </select>
           </label>
           {evaluationScope !== 'correspondence' ? (
             <fieldset className="target-choice">
               <legend>Construction goal</legend>
-              <label><input type="radio" disabled={isGuidedMode} checked={targetTruth} onChange={() => { setTargetTruth(true); setResult(null) }} /> {evaluationScope === 'frame' ? 'Make valid on frame' : 'Make formula true'}</label>
-              <label><input type="radio" disabled={isGuidedMode} checked={!targetTruth} onChange={() => { setTargetTruth(false); setResult(null) }} /> {evaluationScope === 'frame' ? 'Find countervaluation' : 'Build a counterexample'}</label>
+              <label><input type="radio" disabled={isGuidedMode} checked={targetTruth} onChange={() => { setTargetTruth(true); setResult(null) }} /> {comparisonFormulaSource.trim() ? 'Make formulas equivalent' : evaluationScope === 'frame' ? 'Make valid on frame' : 'Make formula true'}</label>
+              <label><input type="radio" disabled={isGuidedMode} checked={!targetTruth} onChange={() => { setTargetTruth(false); setResult(null) }} /> {comparisonFormulaSource.trim() ? 'Make formulas differ' : evaluationScope === 'frame' ? 'Find countervaluation' : 'Build a counterexample'}</label>
             </fieldset>
           ) : <p className="objective-explainer">Compare validity under every valuation with a characteristic property of the accessibility relation.</p>}
           <label className={`field correspondence-picker ${evaluationScope === 'correspondence' ? 'active' : ''}`}>
@@ -1310,7 +1380,11 @@ export function App() {
               <strong>{activeLevel.prediction.prompt}</strong>
               {activeLevel.prediction.kind === 'truth'
                 ? <div className="prediction-choice"><button type="button" className={predictionAnswer === 'true' ? 'active' : ''} aria-pressed={predictionAnswer === 'true'} onClick={() => { setPredictionAnswer('true'); setResult(null) }}>True</button><button type="button" className={predictionAnswer === 'false' ? 'active' : ''} aria-pressed={predictionAnswer === 'false'} onClick={() => { setPredictionAnswer('false'); setResult(null) }}>False</button></div>
-                : <select aria-label="Predicted counterexample world" value={predictionAnswer} onChange={(event) => { setPredictionAnswer(event.target.value); setResult(null) }}><option value="">Select a world</option>{usableWorldIds.map((id) => <option key={id}>{id}</option>)}</select>}
+                : activeLevel.prediction.kind === 'counterexample-world'
+                  ? <select aria-label="Predicted counterexample world" value={predictionAnswer} onChange={(event) => { setPredictionAnswer(event.target.value); setResult(null) }}><option value="">Select a world</option>{usableWorldIds.map((id) => <option key={id}>{id}</option>)}</select>
+                  : activeLevel.prediction.kind === 'frame-property'
+                    ? <select aria-label="Relational property answer" value={predictionAnswer} onChange={(event) => { setPredictionAnswer(event.target.value); setResult(null) }}><option value="">Select a property</option>{(activeLevel.prediction.propertyChoices ?? levelPropertyNames).map((property) => <option key={property}>{property}</option>)}</select>
+                    : <div className="countervaluation-choices" role="radiogroup" aria-label="Countervaluation answer">{activeLevel.prediction.countervaluationChoices?.map((choice) => <button type="button" role="radio" aria-checked={predictionAnswer === choice.id} className={predictionAnswer === choice.id ? 'active' : ''} key={choice.id} onClick={() => { setPredictionAnswer(choice.id); setResult(null) }}><b>{choice.id}</b>{Object.entries(choice.valuation).map(([world, atoms]) => <code key={world}>{world}: {atoms.length ? `{${atoms.join(', ')}}` : '∅'}</code>)}</button>)}</div>}
             </div>
           )}
           <button type="button" className="verify-button" onClick={verify}>Verify objective</button>
@@ -1421,14 +1495,15 @@ export function App() {
                 <label><span>Mission title</span><input aria-label="Custom mission title" value={levelTitle} onChange={(event) => setLevelTitle(event.target.value)} /></label>
                 <label><span>Instruction</span><input aria-label="Custom mission instruction" value={levelInstruction} onChange={(event) => setLevelInstruction(event.target.value)} /></label>
                 <label><span>Learning objective</span><input aria-label="Custom mission learning objective" value={levelLearningObjective} onChange={(event) => setLevelLearningObjective(event.target.value)} /></label>
-                <div className="author-bounds">{([['minimumWorlds', 'Min worlds'], ['maximumWorlds', 'Max worlds'], ['minimumEdges', 'Min edges'], ['maximumEdges', 'Max edges']] as const).map(([key, label]) => <label key={key}><span>{label}</span><input type="number" min="0" step="1" aria-label={label} value={levelBounds[key]} onChange={(event) => setLevelBounds((current) => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
+                <div className="author-bounds">{([['minimumWorlds', 'Min worlds'], ['maximumWorlds', 'Max worlds'], ['minimumEdges', 'Min edges'], ['maximumEdges', 'Max edges'], ['maximumChanges', 'Max changes']] as const).map(([key, label]) => <label key={key}><span>{label}</span><input type="number" min="0" step="1" aria-label={label} value={levelBounds[key]} onChange={(event) => setLevelBounds((current) => ({ ...current, [key]: event.target.value }))} /></label>)}</div>
                 <div className="author-pairs"><label><span>Required edges</span><input aria-label="Required custom mission edges" placeholder="w0 -> w1, w1 -> w2" value={levelRequiredEdges} onChange={(event) => setLevelRequiredEdges(event.target.value)} /></label><label><span>Forbidden edges</span><input aria-label="Forbidden custom mission edges" placeholder="w1 -> w0" value={levelForbiddenEdges} onChange={(event) => setLevelForbiddenEdges(event.target.value)} /></label><label><span>Required atoms</span><input aria-label="Required custom mission atoms" placeholder="w0: p q; w1: r" value={levelRequiredAtoms} onChange={(event) => setLevelRequiredAtoms(event.target.value)} /></label><label><span>Forbidden atoms</span><input aria-label="Forbidden custom mission atoms" placeholder="w0: r; w1: p" value={levelForbiddenAtoms} onChange={(event) => setLevelForbiddenAtoms(event.target.value)} /></label></div>
                 <fieldset><legend>Required frame properties</legend>{([...levelPropertyNames] as FramePropertyName[]).map((property) => <label key={property}><input type="checkbox" checked={levelRequiredProperties.has(property)} onChange={() => setLevelRequiredProperties((current) => { const next = new Set(current); if (next.has(property)) next.delete(property); else { next.add(property); setLevelForbiddenProperties((forbidden) => { const copy = new Set(forbidden); copy.delete(property); return copy }) } return next })} /> {property}</label>)}</fieldset>
                 <fieldset><legend>Forbidden frame properties</legend>{([...levelPropertyNames] as FramePropertyName[]).map((property) => <label key={property}><input type="checkbox" checked={levelForbiddenProperties.has(property)} onChange={() => setLevelForbiddenProperties((current) => { const next = new Set(current); if (next.has(property)) next.delete(property); else { next.add(property); setLevelRequiredProperties((required) => { const copy = new Set(required); copy.delete(property); return copy }) } return next })} /> {property}</label>)}</fieldset>
-                <label><span>Prediction interaction</span><select aria-label="Custom mission prediction" value={levelPredictionKind} onChange={(event) => setLevelPredictionKind(event.target.value as typeof levelPredictionKind)}><option value="none">None</option><option value="truth">Predict truth value</option>{evaluationScope === 'model' && <option value="counterexample-world">Predict counterexample world</option>}</select></label>
+                <label><span>Prediction interaction</span><select aria-label="Custom mission prediction" value={levelPredictionKind} onChange={(event) => setLevelPredictionKind(event.target.value as typeof levelPredictionKind)}><option value="none">None</option><option value="truth">Predict truth value</option>{evaluationScope === 'model' && <option value="counterexample-world">Predict counterexample world</option>}<option value="frame-property">Identify relational property</option></select></label>
+                {levelPredictionKind === 'frame-property' && <label><span>Required property answer</span><select aria-label="Required property answer" value={levelPredictionProperty} onChange={(event) => setLevelPredictionProperty(event.target.value as FramePropertyName)}>{levelPropertyNames.map((property) => <option key={property}>{property}</option>)}</select></label>}
                 <label><span>Optional bonus: maximum edges</span><input type="number" min="0" step="1" aria-label="Bonus maximum edges" value={levelBonusMaximumEdges} onChange={(event) => setLevelBonusMaximumEdges(event.target.value)} /></label>
                 <fieldset><legend>Player may edit</legend>{(['worlds', 'valuations', 'edges', 'constraints', 'evaluation'] as const).map((permission) => <label key={permission}><input type="checkbox" checked={levelEditable.has(permission)} onChange={() => setLevelEditable((current) => { const next = new Set(current); if (next.has(permission)) next.delete(permission); else next.add(permission); return next })} /> {permission}</label>)}</fieldset>
-                <button type="button" className="secondary-button" onClick={downloadCustomLevel}>Download custom mission</button>
+                <div className="author-final-actions"><button type="button" className="primary-action" onClick={playtestCustomMission} disabled={!levelStartSnapshot}>Playtest as player</button><button type="button" className="secondary-button" onClick={restoreCapturedMissionStart} disabled={!levelStartSnapshot}>Restore captured start</button><button type="button" className="secondary-button" onClick={downloadCustomLevel}>Download custom mission</button></div>
               </article>
               <article><h3>Reset local data</h3><p>These actions affect only data stored in this browser.</p><button type="button" className="danger-button" onClick={resetSavedProgress}>Reset learning progress</button><button type="button" className="danger-button" onClick={resetSavedSandbox}>Reset saved sandbox</button></article>
             </div>

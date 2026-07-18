@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
@@ -79,6 +79,16 @@ describe('sandbox user interface', () => {
     await user.selectOptions(screen.getByLabelText('Correspondence lab'), 't')
     expect(screen.getByLabelText('Modal formula')).toHaveValue('□p → p')
     expect(screen.getByLabelText('Semantic target')).toHaveValue('correspondence')
+  })
+
+  it('verifies equivalence or difference between two formulas', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.type(screen.getByLabelText('Comparison formula'), 'p')
+    await user.click(screen.getByLabelText('Make formulas differ'))
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    expect(screen.getByText('Pointed equivalence')).toBeVisible()
+    expect(screen.getByText(/are different at w0/i)).toBeVisible()
   })
 
   it('reports formula, relation, and correspondence verdicts separately', async () => {
@@ -374,6 +384,55 @@ describe('sandbox user interface', () => {
     expect(screen.getByRole('dialog', { name: 'Custom mission complete' })).toBeVisible()
   })
 
+  it('requires a correct relational-property answer when the mission requests it', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Data' }))
+    const mission = {
+      format: 'logic-model-builder-level', version: 1,
+      level: {
+        id: 'property-test', chapter: 'Custom mission', title: 'Property diagnosis', concept: 'Relation diagnosis',
+        instruction: 'Identify the property.', formula: 'p -> p', scope: 'frame', targetTruth: true, evaluationWorld: 'w0',
+        worlds: [{ id: 'w0', atoms: '', position: { x: 90, y: 130 } }, { id: 'w1', atoms: '', position: { x: 390, y: 130 } }],
+        edges: [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w1' }], editable: [],
+        prediction: { kind: 'frame-property', prompt: 'Which property fails?', expectedProperty: 'symmetric', propertyChoices: ['symmetric', 'transitive', 'serial'], mustBeCorrect: true },
+      },
+    }
+    fireEvent.change(screen.getByLabelText('Model JSON'), { target: { value: JSON.stringify(mission) } })
+    await user.click(screen.getByRole('button', { name: 'Import JSON' }))
+    await user.selectOptions(screen.getByLabelText('Relational property answer'), 'transitive')
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    expect(screen.getByText('Required answer incorrect')).toBeVisible()
+    await user.selectOptions(screen.getByLabelText('Relational property answer'), 'symmetric')
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    expect(screen.getByRole('dialog', { name: 'Custom mission complete' })).toBeVisible()
+  })
+
+  it('renders countervaluations and requires the distinguishing choice', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Data' }))
+    const mission = {
+      format: 'logic-model-builder-level', version: 1,
+      level: {
+        id: 'countervaluation-test', chapter: 'Custom mission', title: 'Choose valuation', concept: 'Countervaluation',
+        instruction: 'Choose the countervaluation.', formula: 'box p -> p', scope: 'pointed', targetTruth: false, evaluationWorld: 'w0',
+        worlds: [{ id: 'w0', atoms: '', position: { x: 90, y: 130 } }], edges: [], editable: [],
+        prediction: { kind: 'countervaluation', prompt: 'Which valuation refutes T?', expectedChoice: 'A', mustBeCorrect: true, countervaluationChoices: [{ id: 'A', valuation: { w0: [] } }, { id: 'B', valuation: { w0: ['p'] } }] },
+      },
+    }
+    fireEvent.change(screen.getByLabelText('Model JSON'), { target: { value: JSON.stringify(mission) } })
+    await user.click(screen.getByRole('button', { name: 'Import JSON' }))
+    const answers = screen.getByRole('radiogroup', { name: 'Countervaluation answer' })
+    expect(answers).toHaveTextContent('w0: ∅')
+    await user.click(within(answers).getByRole('radio', { name: /B/ }))
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    expect(screen.getByText('Required answer incorrect')).toBeVisible()
+    await user.click(within(answers).getByRole('radio', { name: /A/ }))
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    expect(screen.getByRole('dialog', { name: 'Custom mission complete' })).toBeVisible()
+  })
+
   it('exposes constraint, prediction, and bonus controls for custom mission authoring', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -381,6 +440,7 @@ describe('sandbox user interface', () => {
 
     expect(screen.getByLabelText('Min worlds')).toBeVisible()
     expect(screen.getByLabelText('Max edges')).toBeVisible()
+    expect(screen.getByLabelText('Max changes')).toBeVisible()
     expect(screen.getByLabelText('Custom mission prediction')).toHaveValue('none')
     expect(screen.getByLabelText('Bonus maximum edges')).toBeVisible()
     expect(screen.getByLabelText('Required custom mission edges')).toBeVisible()
@@ -400,6 +460,34 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: '2. Capture valid solution' }))
     expect(screen.getByText('Solution verified')).toBeVisible()
     expect(screen.getByText(/Valid reference solution captured/)).toBeVisible()
+  })
+
+  it('playtests the captured custom-mission start and returns to the author workspace', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Data' }))
+    await user.click(screen.getByRole('button', { name: '1. Capture mission start' }))
+    await user.click(screen.getByRole('button', { name: 'Playtest as player' }))
+
+    expect(screen.getByText('My custom mission')).toBeVisible()
+    expect(screen.getByLabelText('Modal formula')).toBeDisabled()
+    expect(screen.getByText('Satisfy the configured objective.')).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Sandbox' }))
+    expect(screen.getByLabelText('Modal formula')).toBeEnabled()
+  })
+
+  it('restores a captured mission start after the workspace changes', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Data' }))
+    await user.click(screen.getByRole('button', { name: '1. Capture mission start' }))
+    await user.click(screen.getByRole('button', { name: 'Close data manager' }))
+    await user.clear(screen.getByLabelText('Modal formula'))
+    await user.type(screen.getByLabelText('Modal formula'), 'p')
+    await user.click(screen.getByRole('button', { name: 'Data' }))
+    await user.click(screen.getByRole('button', { name: 'Restore captured start' }))
+    expect(screen.getByLabelText('Modal formula')).toHaveValue('\u25c7p')
   })
 
   it('requires the tutorial frame rule to be globally enforced', async () => {

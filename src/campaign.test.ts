@@ -17,6 +17,7 @@ const verify = (id: string, edges: readonly AccessibilityEdge[], valuation?: Rec
     edges,
     valuation: valuation ?? Object.fromEntries(item.worlds.map((world) => [world.id, world.atoms ? world.atoms.split(' ') : []])),
     formula: parseFormula(item.formula),
+    comparisonFormula: item.comparisonFormula ? parseFormula(item.comparisonFormula) : undefined,
   })
 }
 
@@ -24,7 +25,11 @@ const expectSolved = (id: string, edges: readonly AccessibilityEdge[], valuation
   const item = level(id)
   const worldIds = item.worlds.map((world) => world.id)
   const actualValuation = valuation ?? Object.fromEntries(item.worlds.map((world) => [world.id, world.atoms ? world.atoms.split(' ') : []]))
-  expect(checkConstructionConstraints({ worldIds, explicitEdges: edges, effectiveEdges: edges, valuation: actualValuation }, item.constraints ?? {})).toEqual([])
+  const baseline = {
+    worldIds, explicitEdges: item.edges,
+    valuation: Object.fromEntries(item.worlds.map((world) => [world.id, world.atoms ? world.atoms.split(' ') : []])),
+  }
+  expect(checkConstructionConstraints({ worldIds, explicitEdges: edges, effectiveEdges: edges, valuation: actualValuation, baseline }, item.constraints ?? {})).toEqual([])
   for (const [property, mode] of Object.entries(item.frameRules ?? {})) if (mode !== 'off') expect(checkFrameProperty(worldIds, edges, property as FramePropertyName).holds).toBe(true)
   expect(verify(id, edges, actualValuation).success).toBe(true)
 }
@@ -38,6 +43,8 @@ describe('campaign level solvability', () => {
       expect(new Set(worldIds).size, `${item.id}: unique worlds`).toBe(worldIds.length)
       expect(worldIds, `${item.id}: evaluation world`).toContain(item.evaluationWorld)
       expect(() => parseFormula(item.formula), `${item.id}: formula syntax`).not.toThrow()
+      const comparisonFormula = item.comparisonFormula
+      if (comparisonFormula) expect(() => parseFormula(comparisonFormula), `${item.id}: comparison formula syntax`).not.toThrow()
       for (const edge of item.edges) {
         expect(worldIds, `${item.id}: edge source`).toContain(edge.from)
         expect(worldIds, `${item.id}: edge target`).toContain(edge.to)
@@ -46,6 +53,10 @@ describe('campaign level solvability', () => {
       if (item.prediction) {
         expect(item.prediction.prompt.trim(), `${item.id}: prediction prompt`).not.toBe('')
         if (item.prediction.kind === 'counterexample-world') expect(item.scope, `${item.id}: world prediction scope`).toBe('model')
+        if (item.prediction.kind === 'frame-property') {
+          expect(item.prediction.expectedProperty, `${item.id}: expected property`).toBeDefined()
+          expect(item.prediction.propertyChoices, `${item.id}: property choices`).toContain(item.prediction.expectedProperty)
+        }
       }
       if (item.constraints?.minimumWorlds !== undefined && item.constraints.maximumWorlds !== undefined) {
         expect(item.constraints.minimumWorlds, `${item.id}: consistent world bounds`).toBeLessThanOrEqual(item.constraints.maximumWorlds)
@@ -53,10 +64,10 @@ describe('campaign level solvability', () => {
     }
   })
 
-  it('defines five tracks and unique level identifiers', () => {
+  it('defines six tracks and unique level identifiers', () => {
     const ids = campaignTracks.flatMap((track) => track.levels.map((item) => item.id))
-    expect(campaignTracks).toHaveLength(5)
-    expect(ids).toHaveLength(26)
+    expect(campaignTracks).toHaveLength(6)
+    expect(ids).toHaveLength(32)
     expect(new Set(ids).size).toBe(ids.length)
     expect(campaignTracks.flatMap((track) => track.levels).filter((item) => item.bonusConstraints).length).toBeGreaterThanOrEqual(3)
   })
@@ -71,6 +82,11 @@ describe('campaign level solvability', () => {
     expectSolved('local-distribution-countermodel', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }])
     expectSolved('local-contingent-possibility', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }])
     expectSolved('local-uniform-branching', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }])
+  })
+
+  it('repairs a model within one semantic change', () => {
+    expectSolved('local-one-change-repair', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], { w0: [], w1: ['p'], w2: ['p'] })
+    expectSolved('local-one-change-repair', [{ from: 'w0', to: 'w1' }])
   })
 
   it('solves the added tutorial constructions', () => {
@@ -94,6 +110,7 @@ describe('campaign level solvability', () => {
     expectSolved('witness-b', [{ from: 'w0', to: 'w1' }], { w0: ['p'], w1: [] })
     expectSolved('witness-four', [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }], { w0: [], w1: ['p'], w2: [] })
     expectSolved('witness-five', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }], { w0: [], w1: ['p'], w2: [] })
+    expectSolved('choose-countervaluation-t', [], { w0: [] })
   })
 
   it('solves the frame-engineering levels', () => {
@@ -108,6 +125,7 @@ describe('campaign level solvability', () => {
       { from: 'w1', to: 'w0' }, { from: 'w1', to: 'w1' }, { from: 'w1', to: 'w2' },
       { from: 'w2', to: 'w0' }, { from: 'w2', to: 'w1' }, { from: 'w2', to: 'w2' },
     ])
+    expectSolved('frame-identify-symmetry', [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w1' }])
   })
 
   it('solves the positive correspondence levels', () => {
@@ -132,5 +150,11 @@ describe('campaign level solvability', () => {
     expectSolved('correspondence-break-b', [{ from: 'w0', to: 'w1' }])
     expectSolved('correspondence-break-four', [{ from: 'w0', to: 'w1' }, { from: 'w1', to: 'w2' }])
     expectSolved('correspondence-break-five', [{ from: 'w0', to: 'w1' }, { from: 'w0', to: 'w2' }])
+  })
+
+  it('solves pointed, model-global, and frame equivalence missions', () => {
+    expectSolved('equivalence-pointed-repair', [], { w0: ['p'], w1: [] })
+    expectSolved('equivalence-model-diamond', [{ from: 'w0', to: 'w0' }])
+    expectSolved('equivalence-frame-identity', [{ from: 'w0', to: 'w0' }, { from: 'w1', to: 'w1' }])
   })
 })

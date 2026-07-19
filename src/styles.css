@@ -12,12 +12,16 @@
   --brown: #a45127;
   --brown-dark: #713419;
   --brown-soft: #f1dfd2;
+  --text-micro: .65rem;
+  --text-small: .72rem;
+  --text-ui: .78rem;
+  --text-body: .84rem;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; }
+body { margin: 0; min-width: 320px; min-height: 100vh; font-size: 1rem; line-height: 1.5; }
 button, input, select { font: inherit; }
 button { cursor: pointer; }
 a { color: inherit; }
@@ -230,6 +234,7 @@ a { color: inherit; }
 .field { display: grid; gap: .5rem; }
 .field > span, .world-row label > span, .target-choice legend { color: #515a52; font-size: .76rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 input, select { width: 100%; border: 1px solid transparent; border-radius: 7px; background: #efede6; color: #182019; padding: .7rem .78rem; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+input::placeholder, textarea::placeholder { color: #777d76; opacity: 1; }
 input:hover, select:hover { border-color: rgba(20, 100, 122, .26); background: #f5f3ed; }
 input:focus, select:focus { outline: 3px solid rgba(20, 100, 122, .17); border-color: var(--petrol); }
 input:disabled, select:disabled { cursor: not-allowed; opacity: .62; }
@@ -597,6 +602,102 @@ input:disabled, select:disabled { cursor: not-allowed; opacity: .62; }
   text-decoration: none;
 }
 .author-link:hover { color: var(--petrol-dark); text-decoration: underline; text-underline-offset: .2rem; }
+
+/* A compact but consistently legible type scale for dense game and authoring UI. */
+.product-nav button,
+.text-button, .help-button,
+.map-toolbar > button, .mode-switch button,
+.campaign-track-picker select,
+.campaign-navigation button,
+.level-browser button,
+.inspector-actions button,
+.prediction-choice button,
+.guide-tabs button { font-size: var(--text-small); }
+
+.product-nav small,
+.hero-action > span, .collection-progress > span,
+.level-browser b,
+.profile-summary span,
+.history-list article > b,
+.level-learning > span,
+.campaign-progress span, .campaign-progress b,
+.campaign-track-picker > span, .level-objective > span, .level-constraints > span,
+.world-inspector label > span,
+.prediction-panel > span,
+.valuation-cost > span,
+.objective-summary > span,
+.verdict-section > div span, .verdict-section > div b,
+.valuation-diagnostic > span, .truth-diagnostic > span,
+.evaluation-diagnostic > span, .diagnostic-highlights > span,
+.evaluation-node > summary b,
+.completion-metrics span,
+.campaign-packager label, .campaign-packager li button,
+.share-link-output label, .share-link-output small,
+.author-bounds label, .author-pairs label,
+.level-author legend { font-size: var(--text-micro); line-height: 1.35; }
+
+.screen-note,
+.level-browser p,
+.profile-summary small,
+.educator-export p:last-child,
+.profile-insights li, .profile-insights article > p:last-child,
+.history-list time, .history-list article > div span, .history-list em,
+.profile-empty span,
+.mission-context > small,
+.level-learning > p,
+.campaign-card > small,
+.tutorial-briefing,
+.campaign-track-picker small,
+.level-objective p, .level-constraints small,
+.panel-heading p,
+.frame-properties small,
+.correspondence-note,
+.node-label span,
+.empty-graph-state span,
+.empty-card span,
+.derived-summary,
+.prediction-panel > strong,
+.valuation-cost > small, .valuation-cost > em,
+.countervaluation-choices code,
+.model-choice-grid span, .model-choice-grid small, .model-choice-grid code,
+.objective-summary > small,
+.verdict-section > small,
+.valuation-diagnostic code, .truth-diagnostic code,
+.diagnostic-highlights ul,
+.evaluation-node > summary code,
+.evaluation-node-body > span, .evaluation-node-body > em,
+.bonus-result strong, .bonus-result span,
+.prediction-result strong, .prediction-result span,
+.completion-progress, .completion-close,
+.author-snapshots span,
+.campaign-packager li,
+.share-link-output input,
+.level-author > label, .level-author fieldset label,
+.frame-rule-card > div span, .rule-status { font-size: var(--text-small); line-height: 1.5; }
+
+.guide-page-grid p,
+.history-list article > div strong,
+.objective-explainer,
+.notation,
+.graph-help,
+.result span,
+.data-actions p,
+.data-actions textarea,
+.introduction-grid p,
+.dialog-intro,
+.help-grid p { font-size: var(--text-ui); line-height: 1.65; }
+
+.screen-hero p:not(.eyebrow),
+.dialog-intro,
+.completion-dialog > p:not(.eyebrow) { max-width: 70ch; }
+
+.mission-context > strong,
+.mission-context > small { white-space: normal; line-height: 1.35; }
+
+.field > span, .world-row label > span, .target-choice legend,
+.frame-properties legend { line-height: 1.35; }
+
+code, .notation, .formula-panel input { font-variant-ligatures: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

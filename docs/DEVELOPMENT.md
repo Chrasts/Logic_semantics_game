@@ -107,6 +107,34 @@ designated evaluation world. The current exact permutation algorithm is capped
 at eight worlds, and diversity tracking is skipped—not mission verification—if
 that limit is exceeded. At most 25 signatures are retained per mission.
 
+Successful and failed attempt history also stores transparent construction
+metrics: world count, distinct explicit-edge count, true `(world, atom)`
+memberships, and—when a level baseline exists—the semantic-change count defined
+by `maximumChanges`. These are descriptive measurements. The UI deliberately
+does not collapse them into an arbitrary score or label a solution minimal.
+
+Attempt history stores the active mission concept and a stable failure category
+when verification does not complete. Current categories distinguish missing or
+incorrect required answers, construction constraints, frame-rule configuration,
+relational-property validation, semantic objectives, and syntax/model-data
+errors. The profile aggregates successes/attempts by concept and counts these
+categories locally. This is diagnostic history, not an inference about a
+student's knowledge or a substitute for pedagogical assessment.
+
+## Generated frame tests and validity cost
+
+The generated-frame regression suite enumerates every relation on one, two, and
+three worlds. It checks that each enforceable closure is extensive and actually
+satisfies its property, and independently confirms the finite correspondences
+T/reflexive, D/serial, B/symmetric, 4/transitive, and 5/Euclidean on every such
+frame. This is deterministic exhaustive small-model testing rather than random
+sampling.
+
+The workspace previews frame-search cost as `2^(|W|·|Atoms|)` valuations using
+the union of atoms in both formulas. Searches above
+`DEFAULT_MAXIMUM_VALUATIONS` are disabled before execution with an explicit
+message; the engine retains the same limit as a defensive invariant.
+
 ## Optional mission bonuses
 
 A level may define `bonusConstraints` in addition to its required construction
@@ -170,11 +198,49 @@ constraints, prediction, bonus, and edit permissions before opening the mission.
 The editor rejects constraints that require and forbid the same edge, atom, or
 frame property before a mission file is exported or launched.
 
+## Custom campaign packages
+
+The versioned `logic-model-builder-campaign` format contains an ordered list of
+complete `logic-model-builder-level` files, so each mission retains its own
+constraints and optional reference solution. Import validates every nested
+mission and rejects duplicate mission ids before launching the package as one
+custom sequence. The Data dialog can collect the currently authored mission,
+remove collected entries, and download the ordered package. Package metadata is
+descriptive; progress continues to be keyed by the nested mission ids.
+
+## Share URLs
+
+Mission and campaign JSON can be UTF-8 encoded as URL-safe Base64 in the
+`#share=` fragment. Browsers do not send fragments in HTTP requests, so the
+payload remains client-side and requires no storage backend. On initial load,
+the app decodes and runs the same versioned parser used by pasted JSON before
+launching the shared sequence. Payloads above 60,000 encoded characters are
+rejected with a recommendation to use the downloadable file, since practical
+URL limits vary across browsers and messaging services.
+
 `maximumChanges` is a baseline-relative construction constraint. It counts the
 symmetric differences in world identifiers, distinct explicit relation pairs,
 and `(world, atom)` memberships. Coordinates are presentation data and never
 count as semantic changes. This deliberately describes a semantic edit budget,
 not mouse clicks or undo-history entries.
+
+## Local educator export
+
+The Profile screen can export its last 250 locally stored attempts as CSV. Each
+row includes the pseudonymous guest id, mission and scope, outcome, diagnostic
+category, model size, semantic-change count, and optional bonus result. Authored
+text is quoted and values beginning with spreadsheet formula characters are
+prefixed with an apostrophe to avoid CSV formula injection.
+
+This is deliberately a browser-local hand-off, not telemetry or an account
+system. There is no backend, IP-based identity, automatic collection, or
+cross-device synchronization; the player decides whether to share the file.
+
+Semantic failures are classified from the structured verdict and evaluation
+trace rather than from rendered prose. Categories distinguish a target reached
+at the wrong pointed world, missing or unwanted diamond witnesses, boxed
+counterexample successors, vacuous box truth, model-global counterexamples,
+frame countervaluations, all-valuations confusion, and correspondence mismatch.
 
 ## Current technical scope
 
@@ -182,3 +248,25 @@ The project works with explicit finite frames. It does not currently include an
 external solver, proof of model minimality, or a formal notation
 for regular infinite frames. These are possible extensions rather than hidden
 requirements of the existing engine.
+
+The production build separates React, React Flow, and application code into
+cacheable chunks. This keeps each initial JavaScript asset below the configured
+500 kB warning threshold while retaining relative URLs for GitHub Pages.
+
+The application shell keeps the global header outside the main landmark and
+provides a keyboard-visible skip link. Interactive controls share a high-contrast
+focus-visible treatment, result changes are exposed as atomic live regions, and
+the existing reduced-motion media query suppresses non-essential transitions.
+
+Fullscreen is an optional progressive enhancement using the browser Fullscreen
+API. The toolbar control is disabled where the API is unavailable or forbidden;
+the game remains fully usable in the normal browser viewport.
+
+## Interface hierarchy
+
+The workspace is styled as one visual workbench rather than five equally weighted
+cards. The graph is the primary surface, editing panels use quieter elevation,
+and verification closes the left-to-right task flow with a petrol accent. Global
+navigation uses a compact segmented treatment; destructive and negative states
+reserve the brown accent. Short entrance and result transitions clarify state
+changes and are disabled by the reduced-motion preference.

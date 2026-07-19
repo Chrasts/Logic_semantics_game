@@ -16,13 +16,19 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { campaignTracks, tutorialLevels, type GameLevel } from './campaign'
+import { parseCustomCampaign, serializeCustomCampaign } from './campaign-format'
 import { assertCompatibleAuthoredConstraints, parseAuthoredAtoms, parseAuthoredEdges } from './author-constraints'
-import { assertValidReferenceSolution, parseCustomLevelFile, serializeCustomLevel, type ReferenceSolution } from './level-format'
+import { createShareUrl, readSharedJson } from './share-url'
+import { createEducatorCsv } from './educator-export'
+import { assertValidReferenceSolution, parseCustomLevelFile, parseCustomLevelPackage, serializeCustomLevel, type ParsedCustomLevelFile, type ReferenceSolution } from './level-format'
 import {
   applyFrameProperties,
   checkConstructionConstraints,
   checkFrameProperty,
   canonicalModelSignature,
+  collectAtoms,
+  countConstructionChanges,
+  DEFAULT_MAXIMUM_VALUATIONS,
   describeConstructionConstraints,
   parseFormula,
   verifyObjective,
@@ -74,6 +80,43 @@ function EvaluationTree({ trace, root = false }: { readonly trace: EvaluationTra
       </div>
     </details>
   )
+}
+
+function collectEvaluationDiagnostics(traces: readonly EvaluationTrace[]): readonly string[] {
+  const diagnostics = new Set<string>()
+  const visit = (trace: EvaluationTrace): void => {
+    if (trace.diagnostic) diagnostics.add(trace.diagnostic)
+    trace.children.forEach(visit)
+  }
+  traces.forEach(visit)
+  return [...diagnostics].slice(0, 4)
+}
+
+function EvaluationDiagnostics({ traces }: { readonly traces: readonly EvaluationTrace[] }) {
+  const diagnostics = collectEvaluationDiagnostics(traces)
+  if (diagnostics.length === 0) return null
+  return <div className="diagnostic-highlights"><span>Key diagnostics</span><ul>{diagnostics.map((diagnostic) => <li key={diagnostic}>{diagnostic}</li>)}</ul></div>
+}
+
+function classifyObjectiveFailure(verdict: ObjectiveVerdict, scope: EvaluationScope, targetTruth: boolean, evaluationWorld: string): AttemptFailureCategory {
+  const traces: EvaluationTrace[] = []
+  const visit = (trace: EvaluationTrace): void => {
+    traces.push(trace)
+    trace.children.forEach(visit)
+  }
+  verdict.formula.evaluationTraces?.forEach(visit)
+
+  if (scope === 'pointed' && verdict.formula.truthByWorld?.some(({ worldId, value }) => worldId !== evaluationWorld && value === targetTruth)) return 'wrong-world'
+  const isEquivalence = verdict.formula.label.toLowerCase().includes('equivalence')
+  if (!isEquivalence && traces.some(({ rule, value }) => rule === 'possibility' && !value) && targetTruth) return 'missing-diamond-witness'
+  if (!isEquivalence && traces.some(({ rule, value }) => rule === 'possibility' && value) && !targetTruth) return 'unwanted-diamond-witness'
+  if (!isEquivalence && traces.some(({ rule, value }) => rule === 'necessity' && !value) && targetTruth) return 'box-counterexample'
+  if (!isEquivalence && traces.some(({ rule, value, children }) => rule === 'necessity' && value && children.length === 0) && !targetTruth) return 'vacuous-box'
+  if (scope === 'model') return 'model-global-counterexample'
+  if (scope === 'frame' && verdict.formula.witnessValuation) return 'frame-countervaluation'
+  if (scope === 'frame') return 'frame-validity-quantification'
+  if (scope === 'correspondence') return 'correspondence-mismatch'
+  return 'objective'
 }
 
 interface ModelSnapshot {
@@ -179,7 +222,32 @@ interface HistoryEntry {
   readonly success: boolean
   readonly worldCount: number
   readonly edgeCount: number
+  readonly trueAtomCount?: number
+  readonly semanticChanges?: number
   readonly bonusAchieved?: boolean
+  readonly concept?: string
+  readonly failureCategory?: AttemptFailureCategory
+}
+
+type AttemptFailureCategory = 'missing-answer' | 'construction' | 'frame-configuration' | 'frame-property' | 'objective' | 'required-answer' | 'syntax-or-model' | 'wrong-world' | 'missing-diamond-witness' | 'unwanted-diamond-witness' | 'box-counterexample' | 'vacuous-box' | 'model-global-counterexample' | 'frame-countervaluation' | 'frame-validity-quantification' | 'correspondence-mismatch'
+
+const failureCategoryLabels: Readonly<Record<AttemptFailureCategory, string>> = {
+  'missing-answer': 'Missing required answer',
+  construction: 'Construction constraint',
+  'frame-configuration': 'Frame-rule configuration',
+  'frame-property': 'Relational property',
+  objective: 'Semantic objective',
+  'required-answer': 'Incorrect required answer',
+  'syntax-or-model': 'Syntax or model data',
+  'wrong-world': 'Truth at the wrong world',
+  'missing-diamond-witness': 'Missing witness for diamond',
+  'unwanted-diamond-witness': 'Unexpected witness for diamond',
+  'box-counterexample': 'Counterexample successor for box',
+  'vacuous-box': 'Vacuous truth of box',
+  'model-global-counterexample': 'Model-global counterexample',
+  'frame-countervaluation': 'Frame countervaluation',
+  'frame-validity-quantification': 'All-valuations frame validity',
+  'correspondence-mismatch': 'Formula/property mismatch',
 }
 
 interface GuestProfile {
@@ -222,7 +290,10 @@ function loadCampaignProgress(): ReadonlySet<string> {
 export function App() {
   const [initialDraft] = useState(loadDraft)
   const [gameMode, setGameMode] = useState<GameMode>('sandbox')
-  const [customLevel, setCustomLevel] = useState<GameLevel | null>(null)
+  const [customLevels, setCustomLevels] = useState<readonly GameLevel[]>([])
+  const [customCampaignTitle, setCustomCampaignTitle] = useState('Custom campaign')
+  const [customCampaignDescription, setCustomCampaignDescription] = useState('A user-authored sequence of modal logic missions.')
+  const [authoredCampaignMissions, setAuthoredCampaignMissions] = useState<readonly ParsedCustomLevelFile[]>([])
   const [appView, setAppView] = useState<AppView>('workspace')
   const [campaignLevelIndex, setCampaignLevelIndex] = useState(0)
   const [campaignTrackIndex, setCampaignTrackIndex] = useState(0)
@@ -278,6 +349,7 @@ export function App() {
   const [showDataManager, setShowDataManager] = useState(false)
   const [importSource, setImportSource] = useState('')
   const [dataMessage, setDataMessage] = useState('')
+  const [shareLink, setShareLink] = useState('')
   const [completionDismissed, setCompletionDismissed] = useState(false)
   const [guideTab, setGuideTab] = useState<GuideTab>('controls')
   const [showFrameRules, setShowFrameRules] = useState(false)
@@ -286,6 +358,7 @@ export function App() {
   const [showDerivedEdges, setShowDerivedEdges] = useState(true)
   const [leftPanelOpen, setLeftPanelOpen] = useState(true)
   const [rightPanelOpen, setRightPanelOpen] = useState(true)
+  const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement))
   const [selectedWorldKey, setSelectedWorldKey] = useState<number | null>(null)
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null)
   const historyPast = useRef<ModelSnapshot[]>([])
@@ -330,6 +403,21 @@ export function App() {
     historyPast.current.push(currentSnapshot())
     restoreSnapshot(next)
     setHistoryVersion((version) => version + 1)
+  }
+
+  useEffect(() => {
+    const updateFullscreenState = () => setIsFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', updateFullscreenState)
+    return () => document.removeEventListener('fullscreenchange', updateFullscreenState)
+  }, [])
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen()
+      else await document.documentElement.requestFullscreen()
+    } catch {
+      // Browsers may reject fullscreen when it is blocked by policy or embedding.
+    }
   }
 
   useEffect(() => {
@@ -487,8 +575,9 @@ export function App() {
   const selectedWorld = worlds.find((world) => world.key === selectedWorldKey) ?? null
   const selectedTrack = campaignTracks[campaignTrackIndex]
   const playingTrack = campaignTracks[playingTrackIndex ?? campaignTrackIndex]
-  const activeLevels = gameMode === 'tutorial' ? tutorialLevels : gameMode === 'campaign' ? playingTrack.levels : gameMode === 'custom' && customLevel ? [customLevel] : []
+  const activeLevels = gameMode === 'tutorial' ? tutorialLevels : gameMode === 'campaign' ? playingTrack.levels : gameMode === 'custom' ? customLevels : []
   const activeLevel = gameMode === 'sandbox' ? null : activeLevels[campaignLevelIndex] ?? null
+  const customSequenceLabel = customLevels.length > 1 ? 'Custom campaign' : 'Custom mission'
   const tutorialCompleted = tutorialLevels.filter((level) => completedLevelIds.has(level.id)).length
   const nextTutorialIndex = tutorialLevels.findIndex((level) => !completedLevelIds.has(level.id))
   const selectedTrackCompleted = selectedTrack.levels.filter((level) => completedLevelIds.has(level.id)).length
@@ -499,6 +588,37 @@ export function App() {
   const completedHistoryLevels = new Set(guestProfile.history.filter((entry) => entry.success && entry.levelId).map((entry) => entry.levelId)).size
   const distinctSolutions = Object.values(guestProfile.solutionSignatures).reduce((total, signatures) => total + signatures.length, 0)
   const activeDistinctSolutionCount = activeLevel ? guestProfile.solutionSignatures[activeLevel.id]?.length ?? 0 : 0
+  const currentValuation = Object.fromEntries(worlds.map(({ id, atoms }) => [id.trim(), atoms.split(/[\s,]+/u).filter(Boolean)]))
+  const currentTrueAtomCount = Object.values(currentValuation).reduce((total, atoms) => total + atoms.length, 0)
+  const activeBaseline = activeLevel ? {
+    worldIds: activeLevel.worlds.map(({ id }) => id), explicitEdges: activeLevel.edges,
+    valuation: Object.fromEntries(activeLevel.worlds.map(({ id, atoms }) => [id, atoms.split(/[\s,]+/u).filter(Boolean)])),
+  } : undefined
+  const currentSemanticChanges = activeBaseline ? countConstructionChanges({
+    worldIds: usableWorldIds, explicitEdges: edges, effectiveEdges, valuation: currentValuation, baseline: activeBaseline,
+  }) : undefined
+  const frameValuationEstimate = useMemo(() => {
+    if (evaluationScope !== 'frame' && evaluationScope !== 'correspondence') return null
+    try {
+      const atoms = new Set(collectAtoms(parseFormula(formulaSource)))
+      if (comparisonFormulaSource.trim()) for (const atom of collectAtoms(parseFormula(comparisonFormulaSource))) atoms.add(atom)
+      const slots = usableWorldIds.length * atoms.size
+      return { atoms: atoms.size, valuations: 2 ** slots }
+    } catch {
+      return null
+    }
+  }, [evaluationScope, formulaSource, comparisonFormulaSource, usableWorldIds.length])
+  const frameValuationLimitExceeded = Boolean(frameValuationEstimate && (!Number.isSafeInteger(frameValuationEstimate.valuations) || frameValuationEstimate.valuations > DEFAULT_MAXIMUM_VALUATIONS))
+  const failureSummary = Object.entries(guestProfile.history.reduce<Partial<Record<AttemptFailureCategory, number>>>((counts, entry) => {
+    if (entry.failureCategory) counts[entry.failureCategory] = (counts[entry.failureCategory] ?? 0) + 1
+    return counts
+  }, {})).sort(([, left], [, right]) => (right ?? 0) - (left ?? 0)) as [AttemptFailureCategory, number][]
+  const conceptSummary = [...guestProfile.history.reduce<Map<string, { attempts: number; successes: number }>>((summary, entry) => {
+    const concept = entry.concept ?? entry.scope
+    const current = summary.get(concept) ?? { attempts: 0, successes: 0 }
+    summary.set(concept, { attempts: current.attempts + 1, successes: current.successes + (entry.success ? 1 : 0) })
+    return summary
+  }, new Map()).entries()].sort(([, left], [, right]) => right.attempts - left.attempts).slice(0, 6)
   const isGuidedMode = gameMode !== 'sandbox'
   const canEditWorlds = editorMode === 'edit' && (!activeLevel || activeLevel.editable.includes('worlds'))
   const canEditValuations = editorMode === 'edit' && (!activeLevel || activeLevel.editable.includes('valuations'))
@@ -612,6 +732,27 @@ export function App() {
     setHistoryVersion((version) => version + 1)
   }
 
+  useEffect(() => {
+    try {
+      const shared = readSharedJson()
+      if (!shared) return
+      const imported = JSON.parse(shared) as Record<string, unknown>
+      const levels = imported.format === 'logic-model-builder-campaign'
+        ? parseCustomCampaign(imported).missions.map(({ level }) => level)
+        : [parseCustomLevelFile(imported)]
+      sandboxBeforeCampaign.current = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
+      setCustomLevels(levels)
+      setGameMode('custom')
+      setAppView('workspace')
+      loadLevel(0, levels)
+    } catch (error) {
+      setDataMessage(error instanceof Error ? error.message : 'Could not open the shared mission.')
+      setShowDataManager(true)
+    }
+    // A share fragment is an initial navigation instruction, not reactive app state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const enterGuidedMode = (mode: 'tutorial' | 'campaign') => {
     if (gameMode === 'sandbox') {
       sandboxBeforeCampaign.current = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
@@ -696,13 +837,17 @@ export function App() {
     setResult(null)
   }
 
-  const recordAttempt = (success: boolean, bonusAchieved?: boolean) => {
+  const recordAttempt = (success: boolean, bonusAchieved?: boolean, failureCategory?: AttemptFailureCategory) => {
     const entry: HistoryEntry = {
       id: createLocalId(), timestamp: new Date().toISOString(), mode: gameMode,
       levelId: activeLevel?.id, title: activeLevel?.title ?? 'Sandbox verification',
       scope: evaluationScope, success, worldCount: worlds.length,
       edgeCount: new Set(edges.map(({ from, to }) => `${from}\u0000${to}`)).size,
+      trueAtomCount: currentTrueAtomCount,
+      semanticChanges: currentSemanticChanges,
       bonusAchieved,
+      concept: activeLevel?.concept ?? `${evaluationScope} sandbox`,
+      failureCategory: success ? undefined : failureCategory,
     }
     setGuestProfile((current) => ({ ...current, history: [entry, ...current.history].slice(0, 250) }))
   }
@@ -712,6 +857,7 @@ export function App() {
       setCompletionDismissed(false)
       if (activeLevel?.prediction && !predictionAnswer) {
         setResult({ kind: 'failure', message: 'Make a prediction first', detail: activeLevel.prediction.prompt })
+        recordAttempt(false, undefined, 'missing-answer')
         return
       }
       const ids = worlds.map(({ id }) => id.trim())
@@ -740,7 +886,7 @@ export function App() {
       const constraintViolation = activeLevel?.constraints && checkConstructionConstraints(constraintInput, activeLevel.constraints)[0]
       if (constraintViolation) {
         setResult({ kind: 'failure', message: 'Construction constraint not met', detail: constraintViolation })
-        recordAttempt(false)
+        recordAttempt(false, undefined, 'construction')
         return
       }
 
@@ -749,7 +895,7 @@ export function App() {
       if (requiredRule) {
         const [property, mode] = requiredRule
         setResult({ kind: 'failure', message: 'Frame constraint not configured', detail: `Set ${property} to ${mode}.` })
-        recordAttempt(false)
+        recordAttempt(false, undefined, 'frame-configuration')
         return
       }
 
@@ -760,7 +906,7 @@ export function App() {
           message: `The frame is not ${failedRule.property}.`,
           detail: failedRule.violations[0] ?? 'The selected frame rule is violated.',
         })
-        recordAttempt(false)
+        recordAttempt(false, undefined, 'frame-property')
         return
       }
 
@@ -819,7 +965,11 @@ export function App() {
         } : undefined,
         prediction,
       })
-      recordAttempt(overallSuccess, overallSuccess && activeLevel?.bonusConstraints ? bonusViolations.length === 0 : undefined)
+      recordAttempt(
+        overallSuccess,
+        overallSuccess && activeLevel?.bonusConstraints ? bonusViolations.length === 0 : undefined,
+        predictionRequiredAndWrong ? 'required-answer' : verdict.success ? undefined : classifyObjectiveFailure(verdict, evaluationScope, targetTruth, evaluationWorld),
+      )
       if (overallSuccess && activeLevel) {
         setCompletedLevelIds((current) => new Set([...current, activeLevel.id]))
         try {
@@ -838,7 +988,7 @@ export function App() {
       }
     } catch (error) {
       setResult({ kind: 'error', message: error instanceof Error ? error.message : 'Verification failed.' })
-      recordAttempt(false)
+      recordAttempt(false, undefined, 'syntax-or-model')
     }
   }
 
@@ -946,7 +1096,7 @@ export function App() {
       const contents = serializedCustomLevel()
       const level = parseCustomLevelFile(JSON.parse(contents))
       sandboxBeforeCampaign.current = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
-      setCustomLevel(level)
+      setCustomLevels([level])
       setGameMode('custom')
       loadLevel(0, [level])
       setAppView('workspace')
@@ -1008,10 +1158,22 @@ export function App() {
         setShowDataManager(false)
         return
       }
+      if (imported.format === 'logic-model-builder-campaign') {
+        const campaign = parseCustomCampaign(imported)
+        const levels = campaign.missions.map(({ level }) => level)
+        if (gameMode === 'sandbox') sandboxBeforeCampaign.current = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
+        setCustomLevels(levels)
+        setCustomCampaignTitle(campaign.title)
+        setGameMode('custom')
+        setAppView('workspace')
+        loadLevel(0, levels)
+        setShowDataManager(false)
+        return
+      }
       if (imported.format === 'logic-model-builder-level') {
         const importedLevel = parseCustomLevelFile(imported)
         if (gameMode === 'sandbox') sandboxBeforeCampaign.current = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
-        setCustomLevel(importedLevel)
+        setCustomLevels([importedLevel])
         setGameMode('custom')
         setAppView('workspace')
         loadLevel(0, [importedLevel])
@@ -1087,13 +1249,74 @@ export function App() {
     }
   }
 
-  const downloadJson = (contents: string, filename: string) => {
-    const url = URL.createObjectURL(new Blob([contents], { type: 'application/json' }))
+  const addMissionToCustomCampaign = () => {
+    try {
+      const mission = parseCustomLevelPackage(JSON.parse(serializedCustomLevel()))
+      if (authoredCampaignMissions.some(({ level }) => level.id === mission.level.id)) throw new Error(`The campaign already contains mission id “${mission.level.id}”. Change the mission title before adding another version.`)
+      setAuthoredCampaignMissions((current) => [...current, mission])
+      setDataMessage(`Added “${mission.level.title}” to the custom campaign.`)
+    } catch (error) {
+      setDataMessage(error instanceof Error ? error.message : 'Could not add the mission to the campaign.')
+    }
+  }
+
+  const downloadCustomCampaign = () => {
+    try {
+      const contents = serializeCustomCampaign(customCampaignTitle, customCampaignDescription, authoredCampaignMissions)
+      parseCustomCampaign(JSON.parse(contents))
+      const filename = `${customCampaignTitle.toLowerCase().replace(/[^a-z0-9]+/gu, '-').replace(/^-|-$/gu, '') || 'custom-campaign'}.json`
+      downloadJson(contents, filename)
+      setDataMessage('Custom campaign exported.')
+    } catch (error) {
+      setDataMessage(error instanceof Error ? error.message : 'Could not export the custom campaign.')
+    }
+  }
+
+  const generateMissionShareLink = () => {
+    try {
+      const contents = serializedCustomLevel()
+      parseCustomLevelPackage(JSON.parse(contents))
+      setShareLink(createShareUrl(contents))
+      setDataMessage('Share link generated. Anyone opening it will start this mission locally in their browser.')
+    } catch (error) {
+      setDataMessage(error instanceof Error ? error.message : 'Could not generate the mission link.')
+    }
+  }
+
+  const generateCampaignShareLink = () => {
+    try {
+      const contents = serializeCustomCampaign(customCampaignTitle, customCampaignDescription, authoredCampaignMissions)
+      parseCustomCampaign(JSON.parse(contents))
+      setShareLink(createShareUrl(contents))
+      setDataMessage('Campaign share link generated.')
+    } catch (error) {
+      setDataMessage(error instanceof Error ? error.message : 'Could not generate the campaign link.')
+    }
+  }
+
+  const copyShareLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareLink)
+      setDataMessage('Share link copied to the clipboard.')
+    } catch {
+      setDataMessage('Clipboard access was unavailable. Select and copy the visible link manually.')
+    }
+  }
+
+  const downloadFile = (contents: string, filename: string, type: string) => {
+    const url = URL.createObjectURL(new Blob([contents], { type }))
     const link = document.createElement('a')
     link.href = url
     link.download = filename
     link.click()
     URL.revokeObjectURL(url)
+  }
+
+  const downloadJson = (contents: string, filename: string) => downloadFile(contents, filename, 'application/json')
+
+  const downloadEducatorResults = () => {
+    const csv = createEducatorCsv(guestProfile.id, guestProfile.history)
+    downloadFile(csv, `logic-model-builder-results-${guestProfile.id.slice(0, 8)}.csv`, 'text/csv;charset=utf-8')
   }
 
   const clearLocalHistory = () => {
@@ -1114,7 +1337,8 @@ export function App() {
   }
 
   return (
-    <main className="page-shell">
+    <div className="page-shell">
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <header className="topbar">
         <div className="brand"><span className="brand-mark">◇</span><strong>Logic Model Builder</strong><nav className="product-nav" aria-label="Game modes"><button className={appView === 'workspace' && gameMode === 'sandbox' ? 'active' : ''} type="button" onClick={returnToSandbox}>Sandbox</button><button className={appView === 'tutorial' ? 'active' : ''} type="button" onClick={() => setAppView('tutorial')}>Tutorial</button><button className={appView === 'campaigns' ? 'active' : ''} type="button" onClick={() => setAppView('campaigns')}>Campaigns</button><button className={appView === 'guide' ? 'active' : ''} type="button" onClick={() => setAppView('guide')}>Guide</button><button className={appView === 'profile' ? 'active' : ''} type="button" onClick={() => setAppView('profile')}>Profile</button></nav></div>
         <div className="topbar-actions">
@@ -1126,10 +1350,13 @@ export function App() {
           </>}
           {appView === 'workspace' && <button type="button" className="text-button" onClick={resetSandbox}>{isGuidedMode ? 'Restart level' : 'Reset model'}</button>}
           {appView === 'workspace' && <button type="button" className="help-button" onClick={() => { setGuideTab('controls'); setShowHelp(true) }}>Controls</button>}
-          <button type="button" className="help-button" onClick={openDataManager}>Data</button>
-          <a className="author-link" href="https://github.com/Chrasts/Logic_semantics_game" target="_blank" rel="noreferrer" aria-label="Open the Logic Model Builder GitHub repository">Repository</a>
+          <button type="button" className="text-button topbar-data" onClick={openDataManager}>Data</button>
+          <button type="button" className="text-button fullscreen-button" onClick={() => void toggleFullscreen()} disabled={!document.fullscreenEnabled}>{isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}</button>
+          <a className="author-link" href="https://github.com/Chrasts/Logic_semantics_game" target="_blank" rel="noreferrer" aria-label="Open the Logic Model Builder GitHub repository">GitHub</a>
         </div>
       </header>
+
+      <main id="main-content" className="main-content" tabIndex={-1}>
 
       {appView === 'tutorial' && (
         <section className="content-screen tutorial-screen" aria-labelledby="tutorial-screen-title">
@@ -1165,8 +1392,13 @@ export function App() {
         <section className="content-screen profile-screen" aria-labelledby="profile-title">
           <div className="screen-hero compact"><div><p className="eyebrow">Local guest</p><h1 id="profile-title" className="clean-display">Profile and history</h1><p>This anonymous profile belongs to this browser only. No IP address, fingerprint, e-mail, or other personal identifier is collected.</p></div><div className="profile-actions"><button type="button" className="primary-action" onClick={() => downloadJson(serializedProfile(), 'logic-model-builder-profile.json')}>Download profile</button><button type="button" className="secondary-button" onClick={openDataManager}>Import backup</button></div></div>
           <div className="profile-summary"><article><span>Guest ID</span><strong>{guestProfile.id.slice(0, 8)}</strong><small>Created {new Date(guestProfile.createdAt).toLocaleDateString()}</small></article><article><span>Attempts</span><strong>{guestProfile.history.length}</strong><small>{successfulAttempts} successful verifications</small></article><article><span>Unique levels solved</span><strong>{completedHistoryLevels}</strong><small>{completedLevelIds.size} levels in saved progress</small></article><article><span>Distinct solutions</span><strong>{distinctSolutions}</strong><small>Up to isomorphism within each mission</small></article></div>
+          <div className="educator-export"><div><p className="eyebrow">Educator tools</p><h2>Export local results</h2><p>Download anonymous attempt-level data for a spreadsheet or learning review. The file contains this guest ID, mission context, outcomes, failure categories, and construction metrics; it never leaves this browser unless you share it.</p></div><button type="button" className="secondary-button" onClick={downloadEducatorResults} disabled={guestProfile.history.length === 0}>Download results CSV</button></div>
+          {(conceptSummary.length > 0 || failureSummary.length > 0) && <div className="profile-insights">
+            <article><p className="eyebrow">Concepts</p><h2>Practice by concept</h2>{conceptSummary.length ? <ul>{conceptSummary.map(([concept, counts]) => <li key={concept}><span>{concept}</span><b>{counts.successes}/{counts.attempts}</b></li>)}</ul> : <p>No classified attempts yet.</p>}</article>
+            <article><p className="eyebrow">Diagnostics</p><h2>Failure categories</h2>{failureSummary.length ? <ul>{failureSummary.map(([category, count]) => <li key={category}><span>{failureCategoryLabels[category]}</span><b>{count}</b></li>)}</ul> : <p>No classified failures yet.</p>}</article>
+          </div>}
           <div className="history-heading"><div><p className="eyebrow">Recent activity</p><h2>Verification history</h2></div>{guestProfile.history.length > 0 && <button type="button" className="danger-button" onClick={clearLocalHistory}>Clear history</button>}</div>
-          {guestProfile.history.length === 0 ? <div className="profile-empty"><strong>No attempts recorded yet</strong><span>Verify an objective in the sandbox, tutorial, or a campaign. Up to 250 recent attempts are kept locally.</span></div> : <div className="history-list">{guestProfile.history.map((entry) => <article key={entry.id}><time dateTime={entry.timestamp}>{new Date(entry.timestamp).toLocaleString()}</time><div><strong>{entry.title}</strong><span>{entry.mode} · {entry.scope} · {entry.worldCount} worlds · {entry.edgeCount} relations</span></div><b className={entry.success ? 'success' : 'failure'}>{entry.success ? 'Success' : 'Failed'}</b>{entry.bonusAchieved !== undefined && <em>{entry.bonusAchieved ? 'Bonus' : 'No bonus'}</em>}</article>)}</div>}
+          {guestProfile.history.length === 0 ? <div className="profile-empty"><strong>No attempts recorded yet</strong><span>Verify an objective in the sandbox, tutorial, or a campaign. Up to 250 recent attempts are kept locally.</span></div> : <div className="history-list">{guestProfile.history.map((entry) => <article key={entry.id}><time dateTime={entry.timestamp}>{new Date(entry.timestamp).toLocaleString()}</time><div><strong>{entry.title}</strong><span>{entry.mode} · {entry.scope} · {entry.worldCount} worlds · {entry.edgeCount} explicit edges{entry.trueAtomCount !== undefined ? ` · ${entry.trueAtomCount} true atoms` : ''}{entry.semanticChanges !== undefined ? ` · ${entry.semanticChanges} changes` : ''}</span></div><b className={entry.success ? 'success' : 'failure'}>{entry.success ? 'Success' : 'Failed'}</b>{entry.bonusAchieved !== undefined && <em>{entry.bonusAchieved ? 'Bonus' : 'No bonus'}</em>}</article>)}</div>}
         </section>
       )}
 
@@ -1209,7 +1441,7 @@ export function App() {
           </label>
           <label className="field comparison-formula">
             <span>Comparison formula <small>optional</small></span>
-            <input aria-label="Comparison formula" disabled={isGuidedMode} value={comparisonFormulaSource} placeholder="Leave empty for a single-formula objective" onChange={(event) => { setComparisonFormulaSource(event.target.value); if (event.target.value.trim() && evaluationScope === 'correspondence') setEvaluationScope('frame'); setResult(null) }} spellCheck={false} />
+            <input aria-label="Comparison formula" disabled={isGuidedMode} value={comparisonFormulaSource} placeholder="e.g. box p" onChange={(event) => { setComparisonFormulaSource(event.target.value); if (event.target.value.trim() && evaluationScope === 'correspondence') setEvaluationScope('frame'); setResult(null) }} spellCheck={false} />
           </label>
           <div className="symbol-row" aria-label="Insert symbol">
             {['¬', '∧', '∨', '→', '□', '◇'].map((symbol) => (
@@ -1235,7 +1467,7 @@ export function App() {
           <label className={`field correspondence-picker ${evaluationScope === 'correspondence' ? 'active' : ''}`}>
             <span>Correspondence lab</span>
             <select disabled={isGuidedMode} value={selectedCorrespondence} onChange={(event) => loadCorrespondencePreset(event.target.value)}>
-              <option value="">Choose an axiom preset</option>
+              <option value="">Choose a modal axiom</option>
               {correspondencePresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
             </select>
           </label>
@@ -1392,6 +1624,7 @@ export function App() {
             <strong>{evaluationScope === 'pointed' ? 'Pointed model' : evaluationScope === 'model' ? 'Model-global truth' : evaluationScope === 'frame' ? 'Frame validity' : 'Formula–relation correspondence'}</strong>
             <small>{evaluationScope === 'pointed' ? 'One world · current valuation' : evaluationScope === 'model' ? 'Every world · current valuation' : evaluationScope === 'frame' ? 'Every world · every valuation' : 'Frame validity ↔ relational property'}</small>
           </div>
+          {frameValuationEstimate && <div className={`valuation-cost ${frameValuationLimitExceeded ? 'limit' : ''}`} role="status"><span>Frame search</span><strong>{frameValuationEstimate.valuations.toLocaleString('en-US')} valuations</strong><small>{usableWorldIds.length} worlds × {frameValuationEstimate.atoms} atoms · limit {DEFAULT_MAXIMUM_VALUATIONS.toLocaleString('en-US')}</small>{frameValuationLimitExceeded && <em>Reduce the number of worlds or distinct atoms before verification.</em>}</div>}
           <label className="field">
             <span>Evaluation world</span>
             <select disabled={evaluationScope !== 'pointed' || !canEditEvaluation} value={evaluationWorld} onChange={(event) => { setEvaluationWorld(event.target.value); setResult(null) }}>
@@ -1413,8 +1646,8 @@ export function App() {
                       : <div className="model-choice-grid" role="radiogroup" aria-label="Candidate model answer">{activeLevel.prediction.modelChoices?.map((choice) => <button type="button" role="radio" aria-checked={predictionAnswer === choice.id} className={predictionAnswer === choice.id ? 'active' : ''} key={choice.id} onClick={() => { setPredictionAnswer(choice.id); setResult(null) }}><strong>Model {choice.id}</strong><span>Evaluation: {choice.evaluationWorld}</span><div>{choice.worlds.map((world) => <code key={world.id}>{world.id}: {world.atoms.trim() ? `{${world.atoms.split(/[\s,]+/u).filter(Boolean).join(', ')}}` : '∅'}</code>)}</div><small>R = {choice.edges.length ? `{${choice.edges.map(({ from, to }) => `(${from},${to})`).join(', ')}}` : '∅'}</small></button>)}</div>}
             </div>
           )}
-          <button type="button" className="verify-button" onClick={verify}>Verify objective</button>
-          <div className={`result ${result?.kind ?? ''}`} aria-live="polite">
+          <button type="button" className="verify-button" onClick={verify} disabled={frameValuationLimitExceeded}>Verify objective</button>
+          <div className={`result ${result?.kind ?? ''}`} role={result ? result.kind === 'error' ? 'alert' : 'status' : undefined} aria-live={result?.kind === 'error' ? 'assertive' : 'polite'} aria-atomic="true">
             <strong>{result?.message ?? 'The verification result will appear here.'}</strong>
             {result && 'detail' in result && !result.verdict && <span>{result.detail}</span>}
             {result && 'verdict' in result && result.verdict && (
@@ -1426,7 +1659,7 @@ export function App() {
                     <small>{section.detail}</small>
                     {section.witnessValuation && <div className="valuation-diagnostic"><span>Countervaluation</span>{Object.entries(section.witnessValuation).map(([world, atoms]) => <code key={world}>{world}: {atoms.length ? `{${atoms.join(', ')}}` : '∅'}</code>)}</div>}
                     {section.truthByWorld && <div className="truth-diagnostic"><span>{section.witnessValuation ? 'Truth under countervaluation' : 'Truth by world'}</span><div>{section.truthByWorld.map(({ worldId, value }) => <code className={value ? 'true' : 'false'} key={worldId}>{worldId} <b>{value ? 'T' : 'F'}</b></code>)}</div></div>}
-                    {section.evaluationTraces && <div className="evaluation-diagnostic"><span>Evaluation tree</span>{section.evaluationTraces.map((trace, index) => <EvaluationTree trace={trace} root={section.evaluationTraces?.length === 1} key={`${trace.worldId}:${index}`} />)}</div>}
+                    {section.evaluationTraces && <div className="evaluation-diagnostic"><EvaluationDiagnostics traces={section.evaluationTraces} /><span>Evaluation tree</span>{section.evaluationTraces.map((trace, index) => <EvaluationTree trace={trace} root={section.evaluationTraces?.length === 1} key={`${trace.worldId}:${index}`} />)}</div>}
                   </div>
                 ))}
               </div>
@@ -1441,10 +1674,11 @@ export function App() {
         <div className="dialog-backdrop completion-backdrop" role="presentation">
           <section className="completion-dialog" role="dialog" aria-modal="true" aria-labelledby="completion-title">
             <div className="completion-mark" aria-hidden="true">✓</div>
-            <p className="eyebrow">{campaignLevelIndex === activeLevels.length - 1 ? `${gameMode === 'tutorial' ? 'Tutorial' : gameMode === 'custom' ? 'Custom mission' : 'Campaign'} complete` : 'Objective verified'}</p>
-            <h2 id="completion-title">{gameMode === 'custom' ? 'Custom mission complete' : campaignLevelIndex === activeLevels.length - 1 ? 'Sequence complete' : 'Mission complete'}</h2>
+            <p className="eyebrow">{campaignLevelIndex === activeLevels.length - 1 ? `${gameMode === 'tutorial' ? 'Tutorial' : gameMode === 'custom' ? customSequenceLabel : 'Campaign'} complete` : 'Objective verified'}</p>
+            <h2 id="completion-title">{campaignLevelIndex === activeLevels.length - 1 ? gameMode === 'custom' ? `${customSequenceLabel} complete` : 'Sequence complete' : 'Mission complete'}</h2>
             <p><strong>{activeLevel.title}</strong> is now recorded as complete. You can continue immediately or return to the level overview.</p>
             <p className="solution-diversity">Distinct solutions recorded for this mission: <strong>{activeDistinctSolutionCount}</strong>.</p>
+            <div className="completion-metrics" aria-label="Construction metrics"><span><b>{worlds.length}</b> worlds</span><span><b>{new Set(edges.map(({ from, to }) => `${from}\u0000${to}`)).size}</b> explicit edges</span><span><b>{currentTrueAtomCount}</b> true atoms</span>{currentSemanticChanges !== undefined && <span><b>{currentSemanticChanges}</b> changes from start</span>}</div>
             {result.prediction && <p className={`completion-prediction ${result.prediction.correct ? 'correct' : 'incorrect'}`}><strong>{result.prediction.correct ? 'Prediction correct.' : 'Prediction incorrect.'}</strong> {result.prediction.detail}</p>}
             {result.bonus && <p className={`completion-bonus ${result.bonus.achieved ? 'achieved' : ''}`}>{result.bonus.detail}</p>}
             <div className="completion-progress"><span>{activeLevels.filter((level) => completedLevelIds.has(level.id)).length}/{activeLevels.length} complete</span><div className="progress-meter"><i style={{ width: `${activeLevels.filter((level) => completedLevelIds.has(level.id)).length / activeLevels.length * 100}%` }} /></div></div>
@@ -1530,7 +1764,16 @@ export function App() {
                 {levelPredictionKind === 'frame-property' && <label><span>Required property answer</span><select aria-label="Required property answer" value={levelPredictionProperty} onChange={(event) => setLevelPredictionProperty(event.target.value as FramePropertyName)}>{levelPropertyNames.map((property) => <option key={property}>{property}</option>)}</select></label>}
                 <label><span>Optional bonus: maximum edges</span><input type="number" min="0" step="1" aria-label="Bonus maximum edges" value={levelBonusMaximumEdges} onChange={(event) => setLevelBonusMaximumEdges(event.target.value)} /></label>
                 <fieldset><legend>Player may edit</legend>{(['worlds', 'valuations', 'edges', 'constraints', 'evaluation'] as const).map((permission) => <label key={permission}><input type="checkbox" checked={levelEditable.has(permission)} onChange={() => setLevelEditable((current) => { const next = new Set(current); if (next.has(permission)) next.delete(permission); else next.add(permission); return next })} /> {permission}</label>)}</fieldset>
-                <div className="author-final-actions"><button type="button" className="primary-action" onClick={playtestCustomMission} disabled={!levelStartSnapshot}>Playtest as player</button><button type="button" className="secondary-button" onClick={restoreCapturedMissionStart} disabled={!levelStartSnapshot}>Restore captured start</button><button type="button" className="secondary-button" onClick={downloadCustomLevel}>Download custom mission</button></div>
+                <div className="author-final-actions"><button type="button" className="primary-action" onClick={playtestCustomMission} disabled={!levelStartSnapshot}>Playtest as player</button><button type="button" className="secondary-button" onClick={restoreCapturedMissionStart} disabled={!levelStartSnapshot}>Restore captured start</button><button type="button" className="secondary-button" onClick={downloadCustomLevel}>Download custom mission</button><button type="button" className="secondary-button" onClick={generateMissionShareLink}>Generate mission link</button></div>
+                <div className="campaign-packager">
+                  <h4>Campaign package</h4>
+                  <label><span>Campaign title</span><input aria-label="Custom campaign title" value={customCampaignTitle} onChange={(event) => setCustomCampaignTitle(event.target.value)} /></label>
+                  <label><span>Description</span><input aria-label="Custom campaign description" value={customCampaignDescription} onChange={(event) => setCustomCampaignDescription(event.target.value)} /></label>
+                  <button type="button" className="secondary-button" onClick={addMissionToCustomCampaign}>Add current mission to package</button>
+                  {authoredCampaignMissions.length > 0 && <ol>{authoredCampaignMissions.map(({ level }, index) => <li key={level.id}><span>{index + 1}. {level.title}</span><button type="button" aria-label={`Remove ${level.title} from package`} onClick={() => setAuthoredCampaignMissions((current) => current.filter(({ level: candidate }) => candidate.id !== level.id))}>Remove</button></li>)}</ol>}
+                  <div><button type="button" className="primary-action" disabled={authoredCampaignMissions.length === 0} onClick={downloadCustomCampaign}>Download campaign package</button><button type="button" className="secondary-button" disabled={authoredCampaignMissions.length === 0} onClick={generateCampaignShareLink}>Generate campaign link</button></div>
+                </div>
+                {shareLink && <div className="share-link-output"><label><span>Shareable URL</span><input aria-label="Shareable URL" readOnly value={shareLink} onFocus={(event) => event.currentTarget.select()} /></label><button type="button" className="secondary-button" onClick={copyShareLink}>Copy link</button><small>The mission data is encoded after # and is not sent to the hosting server.</small></div>}
               </article>
               <article><h3>Reset local data</h3><p>These actions affect only data stored in this browser.</p><button type="button" className="danger-button" onClick={resetSavedProgress}>Reset learning progress</button><button type="button" className="danger-button" onClick={resetSavedSandbox}>Reset saved sandbox</button></article>
             </div>
@@ -1567,10 +1810,10 @@ export function App() {
               <div><h3>Verification scopes</h3><p>Check one world, every world under the current valuation, or frame validity across every valuation of the formula's atoms.</p></div>
               <div><h3>Formal notation</h3><p>A frame is F = ⟨W,R⟩ and a model is M = ⟨W,R,ν⟩. We write M,w ⊨ φ for truth at a world; ⊨ is used consistently throughout the game.</p></div>
               <div><h3>Frame constraints</h3><p>Validate requires a property without editing the relation. Enforce computes reflexive, symmetric, transitive, or Euclidean closure. Constraints remain separate from the formula objective.</p></div>
-              <div><h3>Correspondence lab</h3><p>Load standard T, D, B, 4, and 5 axiom presets to compare finite-frame validity with their characteristic relational properties.</p></div>
+              <div><h3>Correspondence lab</h3><p>Load standard modal axioms T, D, B, 4, and 5 to compare finite-frame validity with their corresponding frame properties.</p></div>
               <div><h3>Formula notation</h3><p>Use ¬, ∧, ∨, →, □, ◇ or the alternatives !, &amp;, |, -&gt;, box, diamond.</p></div>
               <div><h3>Storage</h3><p>Your sandbox is saved only in this browser. Reset model restores the initial example.</p></div>
-              <div><h3>Workspace</h3><p>Use the top-bar controls to undo or redo model edits and collapse either side of the workspace. The map toolbar can fit the graph or hide derived edges.</p></div>
+              <div><h3>Workspace</h3><p>Use the top-bar controls to undo or redo model edits, enter fullscreen, and collapse either side of the workspace. The map toolbar can fit the graph or hide derived edges.</p></div>
             </div>}
             {guideTab === 'objectives' && <div className="help-grid objective-guide">
               <div><h3>Pointed objectives</h3><p>Make or refute M,w ⊨ φ at one selected world under the current valuation.</p></div>
@@ -1587,6 +1830,7 @@ export function App() {
           </section>
         </div>
       )}
-    </main>
+      </main>
+    </div>
   )
 }

@@ -4,8 +4,16 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
+import { createShareUrl } from './share-url'
 
 describe('sandbox user interface', () => {
+  it('provides a keyboard skip link and a focusable main landmark', () => {
+    render(<App />)
+    expect(screen.getByRole('link', { name: 'Skip to main content' })).toHaveAttribute('href', '#main-content')
+    expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content')
+    expect(screen.getByRole('main')).toHaveAttribute('tabindex', '-1')
+  })
+
   it('links to the game repository', () => {
     render(<App />)
     expect(screen.getByRole('link', { name: 'Open the Logic Model Builder GitHub repository' })).toHaveAttribute('href', 'https://github.com/Chrasts/Logic_semantics_game')
@@ -13,6 +21,7 @@ describe('sandbox user interface', () => {
 
   beforeEach(() => {
     localStorage.clear()
+    window.history.replaceState(null, '', '/')
     vi.stubGlobal('confirm', vi.fn(() => true))
   })
 
@@ -89,6 +98,38 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
     expect(screen.getByText('Pointed equivalence')).toBeVisible()
     expect(screen.getByText(/are different at w0/i)).toBeVisible()
+  })
+
+  it('classifies failures and summarizes practice by concept in the local profile', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.clear(screen.getByLabelText('Modal formula'))
+    await user.type(screen.getByLabelText('Modal formula'), 'box (')
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    await user.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(screen.getByText('Practice by concept')).toBeVisible()
+    expect(screen.getByText('pointed sandbox')).toBeVisible()
+    expect(screen.getByText('Syntax or model data')).toBeVisible()
+  })
+
+  it('classifies a missing possibility witness as a specific semantic error', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    fireEvent.change(screen.getByLabelText('Modal formula'), { target: { value: 'diamond q' } })
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    await user.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(screen.getByText('Missing witness for diamond')).toBeVisible()
+  })
+
+  it('estimates frame-validity cost and blocks searches above the valuation limit', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.selectOptions(screen.getByLabelText('Semantic target'), 'frame')
+    expect(screen.getByText('4 valuations')).toBeVisible()
+    fireEvent.change(screen.getByLabelText('Modal formula'), { target: { value: Array.from({ length: 16 }, (_, index) => `p${index}`).join(' | ') } })
+    expect(screen.getByText(/4,294,967,296 valuations/)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Verify objective' })).toBeDisabled()
+    expect(screen.getByText(/Reduce the number of worlds or distinct atoms/)).toBeVisible()
   })
 
   it('reports formula, relation, and correspondence verdicts separately', async () => {
@@ -297,6 +338,7 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
     expect(screen.getByText('Countervaluation')).toBeVisible()
     expect(screen.getByText('Truth under countervaluation')).toBeVisible()
+    expect(screen.getByText('Key diagnostics')).toBeVisible()
     expect(screen.getAllByText(/w0:/).length).toBeGreaterThan(0)
   })
 
@@ -308,6 +350,8 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Profile' }))
     expect(screen.getByText('Sandbox verification')).toBeVisible()
     expect(screen.getByText('1 successful verifications')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Download results CSV' })).toBeEnabled()
+    expect(screen.getByText(/never leaves this browser unless you share it/i)).toBeVisible()
     view.unmount()
 
     render(<App />)
@@ -383,6 +427,11 @@ describe('sandbox user interface', () => {
     await user.click(screen.getByRole('button', { name: 'Verify objective' }))
     expect(screen.getByRole('dialog', { name: 'Custom mission complete' })).toBeVisible()
     expect(screen.getByText(/Distinct solutions recorded for this mission:/)).toHaveTextContent('1')
+    const metrics = screen.getByLabelText('Construction metrics')
+    expect(metrics).toHaveTextContent('2 worlds')
+    expect(metrics).toHaveTextContent('1 explicit edges')
+    expect(metrics).toHaveTextContent('1 true atoms')
+    expect(metrics).toHaveTextContent('1 changes from start')
   })
 
   it('requires a correct relational-property answer when the mission requests it', async () => {
@@ -478,6 +527,41 @@ describe('sandbox user interface', () => {
     expect(screen.getByRole('button', { name: '1. Capture mission start' })).toBeVisible()
     expect(screen.getByRole('button', { name: '2. Capture valid solution' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Download custom mission' })).toBeVisible()
+    expect(screen.getByLabelText('Custom campaign title')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Add current mission to package' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Download campaign package' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Generate mission link' }))
+    expect((screen.getByLabelText('Shareable URL') as HTMLInputElement).value).toContain('#share=')
+  })
+
+  it('opens a shared mission directly from the URL fragment', () => {
+    const mission = {
+      format: 'logic-model-builder-level', version: 1,
+      level: { id: 'shared-url', chapter: 'Shared', title: 'Fragment mission', concept: 'URL sharing', instruction: 'Verify p.', formula: 'p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [{ id: 'w0', atoms: 'p', position: { x: 90, y: 130 } }], edges: [], editable: [] },
+    }
+    const shared = new URL(createShareUrl(JSON.stringify(mission)))
+    window.history.replaceState(null, '', `${shared.pathname}${shared.hash}`)
+    render(<App />)
+    expect(screen.getByText('Fragment mission')).toBeVisible()
+    expect(screen.getByLabelText('Modal formula')).toBeDisabled()
+  })
+
+  it('imports and progresses through a custom campaign package', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Data' }))
+    const level = (id: string, title: string) => ({
+      format: 'logic-model-builder-level', version: 1,
+      level: { id, chapter: 'Course', title, concept: 'Package test', instruction: 'Verify p.', formula: 'p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0', worlds: [{ id: 'w0', atoms: 'p', position: { x: 90, y: 130 } }], edges: [], editable: [] },
+    })
+    const campaign = { format: 'logic-model-builder-campaign', version: 1, title: 'Imported course', description: 'Two steps', missions: [level('package-one', 'First packaged mission'), level('package-two', 'Second packaged mission')] }
+    fireEvent.change(screen.getByLabelText('Model JSON'), { target: { value: JSON.stringify(campaign) } })
+    await user.click(screen.getByRole('button', { name: 'Import JSON' }))
+    expect(screen.getByText('First packaged mission')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Verify objective' }))
+    expect(screen.getByRole('dialog', { name: 'Mission complete' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Next mission' }))
+    expect(screen.getByText('Second packaged mission')).toBeVisible()
   })
 
   it('captures and verifies separate custom-mission start and solution snapshots', async () => {

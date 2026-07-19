@@ -64,7 +64,7 @@ export function parseCustomLevelPackage(value: unknown): ParsedCustomLevelFile {
   const correspondencePreset = typeof source.correspondencePreset === 'string' && ['t', 'd', 'b', '4', '5'].includes(source.correspondencePreset)
     ? source.correspondencePreset as GameLevel['correspondencePreset']
     : undefined
-  if (source.scope === 'correspondence' && !correspondencePreset) throw new Error('A correspondence mission needs a supported axiom preset.')
+  if (source.scope === 'correspondence' && !correspondencePreset) throw new Error('A correspondence mission needs a supported modal-axiom preset.')
   if (source.scope === 'correspondence' && comparisonFormula) throw new Error('Formula equivalence cannot be combined with a correspondence mission.')
   if (typeof source.targetTruth !== 'boolean') throw new Error('Custom mission targetTruth must be Boolean.')
   if (!Array.isArray(source.worlds) || source.worlds.length === 0) throw new Error('A custom mission needs at least one world.')

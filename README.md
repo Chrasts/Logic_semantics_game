@@ -26,9 +26,23 @@ and sandbox models and completed missions are saved locally in the browser.
 - Inspect counterexample worlds and countervaluations when an objective fails.
 - Expand a recursive evaluation tree showing subformulas, worlds, modal
   witnesses, counterexample successors, and vacuous truth.
+- See the most actionable nested evaluation diagnostics summarized above the
+  tree, without having to expand every subformula first.
+- Navigate with a keyboard using a skip link, visible focus indicators, semantic
+  landmarks, and live verification-result announcements.
+- Enter browser fullscreen from the global toolbar where the Fullscreen API is
+  available.
 - Keep an anonymous browser-local guest history and export it as a JSON backup.
 - Record structurally distinct successful solutions per mission up to finite
   Kripke-model isomorphism, so renaming worlds does not inflate the count.
+- Record transparent construction metrics—worlds, explicit edges, true atom
+  memberships, and semantic changes from the mission start—without presenting
+  them as a proof of mathematical minimality.
+- Summarize local practice by mission concept and classify failures into stable
+  structural, frame-rule, answer, syntax/model, and finer semantic categories,
+  including modal witnesses, box counterexamples, scope, and frame validity.
+- Preview the exponential number of valuations required by frame validity and
+  stop searches above the documented finite-browser limit before execution.
 - Turn the current sandbox into a versioned custom mission, choose which editor
   parts remain unlocked, add size and frame-property constraints, predictions,
   required or forbidden edges and atoms, and an optional edge bonus, then share
@@ -38,6 +52,10 @@ and sandbox models and completed missions are saved locally in the browser.
   mission immediately in the same locked player workspace used by imports.
 - Define repair missions with a maximum semantic-change budget measured against
   the initial model (worlds, explicit edges, and atom memberships).
+- Collect authored missions into an ordered, versioned campaign package that
+  can be shared as one JSON file and played as a multi-level sequence.
+- Generate shareable mission or campaign URLs whose validated JSON payload is
+  encoded entirely in the URL fragment and opened directly by the game.
 
 The formula editor accepts `¬`, `∧`, `∨`, `→`, `□`, and `◇`, as well as the text
 alternatives `!`, `&`, `|`, `->`, `box`, and `diamond`.
@@ -80,6 +98,13 @@ the configured formula.
 Candidate-model missions present several small pointed Kripke models side by
 side, including their valuations and explicit relations, and require a semantic
 choice rather than an edit to the active workspace.
+
+### Local learning record
+
+The browser keeps an anonymous guest profile with recent verification attempts,
+concept and failure summaries, and distinct successful constructions. Players
+can back up the full profile as JSON or export attempt-level results as CSV for
+an educator or personal study review. Nothing is uploaded automatically.
 
 ### Guide
 

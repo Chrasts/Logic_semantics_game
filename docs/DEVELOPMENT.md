@@ -270,3 +270,16 @@ and verification closes the left-to-right task flow with a petrol accent. Global
 navigation uses a compact segmented treatment; destructive and negative states
 reserve the brown accent. Short entrance and result transitions clarify state
 changes and are disabled by the reduced-motion preference.
+
+The initial app view is a concise home menu with two primary branches. `Play`
+contains the tutorial, campaign browsers, and sandbox; `Learn & Reference`
+combines the intuitive introduction, formal semantics, objectives, glossary,
+and interface controls. Back navigation follows this explicit hierarchy. Shared
+URL fragments remain direct navigation instructions and therefore launch the
+validated custom mission or campaign without stopping at Home. Interface
+settings are versioned separately from sandbox and learning data.
+
+Guided workspaces keep the graph tall by rendering only mission identity,
+objective, constraints, and level navigation in the persistent HUD. Briefings
+and learning objectives live in the expandable `Level details` popover. Desktop
+sidebars are deliberately narrower than the graph and can still be collapsed.

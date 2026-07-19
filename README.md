@@ -8,6 +8,9 @@ modal axioms and relational properties.
 
 The browser version is the primary way to play. It requires no installation,
 and sandbox models and completed missions are saved locally in the browser.
+The application opens on a home menu with direct routes to the tutorial,
+campaigns, sandbox, guide, profile, settings, and local data tools. Shared
+mission URLs intentionally bypass the menu and launch their validated content.
 
 ## What you can do
 
@@ -108,8 +111,21 @@ an educator or personal study review. Nothing is uploaded automatically.
 
 ### Guide
 
-The in-game guide provides a compact introduction to Kripke semantics, controls,
-objective scopes, and construction constraints.
+The in-game guide separates a notation-free introduction for newcomers from
+formal Kripke semantics. Its sections then cover box and diamond, semantic
+scopes, relations and modal axioms, objectives, controls, and a notation
+glossary.
+
+The home screen separates **Play** from **Learn & Reference**. Play leads to the
+tutorial, campaigns, and sandbox; the learning guide starts intuitively and
+also serves as the formal and interface reference. Back controls follow this
+hierarchy instead of depending on browser history.
+
+### Settings
+
+Browser-local settings control workspace density, minimap visibility, derived
+edge visibility, reduced interface motion, and optional fullscreen. They affect
+presentation only and never change formulas, semantics, or mission constraints.
 
 ## Modal semantics
 

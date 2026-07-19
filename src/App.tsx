@@ -60,8 +60,8 @@ type VerificationResult =
 
 type EditorMode = 'edit' | 'evaluate'
 type GameMode = 'sandbox' | 'tutorial' | 'campaign' | 'custom'
-type GuideTab = 'theory' | 'controls' | 'objectives'
-type AppView = 'workspace' | 'tutorial' | 'campaigns' | 'guide' | 'profile'
+type GuideTab = 'overview' | 'start' | 'theory' | 'operators' | 'scopes' | 'relations' | 'objectives' | 'controls' | 'glossary'
+type AppView = 'home' | 'play' | 'workspace' | 'tutorial' | 'campaigns' | 'guide' | 'profile' | 'settings'
 type EvaluationScope = ObjectiveScope
 type FrameRuleMode = 'off' | 'validate' | 'enforce'
 type FrameRules = Record<FramePropertyName, FrameRuleMode>
@@ -134,6 +134,21 @@ const initialWorlds: EditableWorld[] = [
 const initialEdges: EditableEdge[] = [{ key: 0, from: 'w0', to: 'w1' }]
 const storageKey = 'logic-game:sandbox:v1'
 const campaignProgressKey = 'logic-game:campaign-progress:v1'
+const interfaceSettingsKey = 'logic-game:interface-settings:v1'
+type InterfaceDensity = 'comfortable' | 'compact'
+interface InterfaceSettings { readonly density: InterfaceDensity; readonly showMinimap: boolean; readonly showDerivedEdges: boolean; readonly reduceMotion: boolean }
+const defaultInterfaceSettings: InterfaceSettings = { density: 'comfortable', showMinimap: true, showDerivedEdges: true, reduceMotion: false }
+const loadInterfaceSettings = (): InterfaceSettings => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(interfaceSettingsKey) ?? 'null') as Partial<InterfaceSettings> | null
+    return stored ? {
+      density: stored.density === 'compact' ? 'compact' : 'comfortable',
+      showMinimap: stored.showMinimap !== false,
+      showDerivedEdges: stored.showDerivedEdges !== false,
+      reduceMotion: stored.reduceMotion === true,
+    } : defaultInterfaceSettings
+  } catch { return defaultInterfaceSettings }
+}
 const explicitKeyFromFlowEdgeId = (id: string) => id.startsWith('explicit:') ? Number(id.slice(9)) : null
 const defaultFrameRules: FrameRules = {
   reflexive: 'off',
@@ -287,14 +302,15 @@ function loadCampaignProgress(): ReadonlySet<string> {
   }
 }
 
-export function App() {
+export function App({ initialView = 'home' }: { readonly initialView?: AppView } = {}) {
   const [initialDraft] = useState(loadDraft)
+  const [initialInterfaceSettings] = useState(loadInterfaceSettings)
   const [gameMode, setGameMode] = useState<GameMode>('sandbox')
   const [customLevels, setCustomLevels] = useState<readonly GameLevel[]>([])
   const [customCampaignTitle, setCustomCampaignTitle] = useState('Custom campaign')
   const [customCampaignDescription, setCustomCampaignDescription] = useState('A user-authored sequence of modal logic missions.')
   const [authoredCampaignMissions, setAuthoredCampaignMissions] = useState<readonly ParsedCustomLevelFile[]>([])
-  const [appView, setAppView] = useState<AppView>('workspace')
+  const [appView, setAppView] = useState<AppView>(initialView)
   const [campaignLevelIndex, setCampaignLevelIndex] = useState(0)
   const [campaignTrackIndex, setCampaignTrackIndex] = useState(0)
   const [playingTrackIndex, setPlayingTrackIndex] = useState<number | null>(null)
@@ -351,11 +367,14 @@ export function App() {
   const [dataMessage, setDataMessage] = useState('')
   const [shareLink, setShareLink] = useState('')
   const [completionDismissed, setCompletionDismissed] = useState(false)
-  const [guideTab, setGuideTab] = useState<GuideTab>('controls')
+  const [guideTab, setGuideTab] = useState<GuideTab>('overview')
   const [showFrameRules, setShowFrameRules] = useState(false)
   const [selectedCorrespondence, setSelectedCorrespondence] = useState('')
   const [editorMode, setEditorMode] = useState<EditorMode>('edit')
-  const [showDerivedEdges, setShowDerivedEdges] = useState(true)
+  const [showDerivedEdges, setShowDerivedEdges] = useState(initialInterfaceSettings.showDerivedEdges)
+  const [showMinimap, setShowMinimap] = useState(initialInterfaceSettings.showMinimap)
+  const [interfaceDensity, setInterfaceDensity] = useState<InterfaceDensity>(initialInterfaceSettings.density)
+  const [reduceMotion, setReduceMotion] = useState(initialInterfaceSettings.reduceMotion)
   const [leftPanelOpen, setLeftPanelOpen] = useState(true)
   const [rightPanelOpen, setRightPanelOpen] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement))
@@ -433,6 +452,11 @@ export function App() {
   useEffect(() => {
     try { localStorage.setItem(guestProfileKey, JSON.stringify(guestProfile)) } catch { /* History remains available for this session. */ }
   }, [guestProfile])
+
+  useEffect(() => {
+    const settings: InterfaceSettings = { density: interfaceDensity, showMinimap, showDerivedEdges, reduceMotion }
+    try { localStorage.setItem(interfaceSettingsKey, JSON.stringify(settings)) } catch { /* Preferences remain available for this session. */ }
+  }, [interfaceDensity, showMinimap, showDerivedEdges, reduceMotion])
 
   useEffect(() => {
     if (!showHelp && !showFrameRules && !showDataManager) return
@@ -772,6 +796,17 @@ export function App() {
     const levels = mode === 'tutorial' ? tutorialLevels : campaignTracks[trackIndex].levels
     loadLevel(index, levels)
     setAppView('workspace')
+  }
+
+  const continueLearning = () => {
+    if (nextTutorialIndex >= 0) {
+      startGuidedLevel('tutorial', nextTutorialIndex)
+      return
+    }
+    const trackIndex = campaignTracks.findIndex((track) => track.levels.some((level) => !completedLevelIds.has(level.id)))
+    const nextTrack = trackIndex >= 0 ? trackIndex : 0
+    const nextLevel = campaignTracks[nextTrack].levels.findIndex((level) => !completedLevelIds.has(level.id))
+    startGuidedLevel('campaign', nextLevel >= 0 ? nextLevel : 0, nextTrack)
   }
 
   const returnToSandbox = () => {
@@ -1336,11 +1371,27 @@ export function App() {
     }
   }
 
+  const goBack = () => {
+    if (appView === 'workspace') {
+      if (isGuidedMode) returnToGuidedBrowser()
+      else setAppView('play')
+      return
+    }
+    if (appView === 'tutorial' || appView === 'campaigns') setAppView('play')
+    else setAppView('home')
+  }
+
+  const activeGuideTabs: readonly (readonly [GuideTab, string])[] = guideTab === 'start'
+    ? [['start', 'Introduction']]
+    : guideTab === 'objectives' || guideTab === 'controls'
+      ? [['controls', 'Controls'], ['objectives', 'Objectives & constraints']]
+      : [['theory', 'Frames & models'], ['operators', 'Box & diamond'], ['scopes', 'Semantic scopes'], ['relations', 'Relations & axioms'], ['glossary', 'Glossary']]
+
   return (
-    <div className="page-shell">
+    <div className={`page-shell density-${interfaceDensity} ${reduceMotion ? 'force-reduced-motion' : ''}`}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
       <header className="topbar">
-        <div className="brand"><span className="brand-mark">◇</span><strong>Logic Model Builder</strong><nav className="product-nav" aria-label="Game modes"><button className={appView === 'workspace' && gameMode === 'sandbox' ? 'active' : ''} type="button" onClick={returnToSandbox}>Sandbox</button><button className={appView === 'tutorial' ? 'active' : ''} type="button" onClick={() => setAppView('tutorial')}>Tutorial</button><button className={appView === 'campaigns' ? 'active' : ''} type="button" onClick={() => setAppView('campaigns')}>Campaigns</button><button className={appView === 'guide' ? 'active' : ''} type="button" onClick={() => setAppView('guide')}>Guide</button><button className={appView === 'profile' ? 'active' : ''} type="button" onClick={() => setAppView('profile')}>Profile</button></nav></div>
+        <div className="brand">{appView !== 'home' && <button className="back-button" type="button" onClick={goBack} aria-label="Go back">← <span>Back</span></button>}<span className="brand-mark">◇</span><strong>Logic Model Builder</strong><nav className="product-nav" aria-label="Global navigation"><button className={appView === 'home' ? 'active' : ''} type="button" onClick={() => setAppView('home')}>Home</button><button className={appView === 'play' || appView === 'tutorial' || appView === 'campaigns' || appView === 'workspace' ? 'active' : ''} type="button" onClick={() => setAppView('play')}>Play</button>{appView === 'workspace' && <span className="current-mode">{gameMode === 'sandbox' ? 'Sandbox' : gameMode === 'tutorial' ? 'Tutorial' : gameMode === 'campaign' ? 'Campaign' : customSequenceLabel}</span>}<button className={appView === 'guide' ? 'active' : ''} type="button" onClick={() => { setGuideTab('overview'); setAppView('guide') }}>Learn</button><button className={appView === 'profile' ? 'active' : ''} type="button" onClick={() => setAppView('profile')}>Profile</button></nav></div>
         <div className="topbar-actions">
           {appView === 'workspace' && <>
           <button type="button" className="icon-button" onClick={undo} disabled={historyPast.current.length === 0} aria-label="Undo" title="Undo">↶</button>
@@ -1351,12 +1402,47 @@ export function App() {
           {appView === 'workspace' && <button type="button" className="text-button" onClick={resetSandbox}>{isGuidedMode ? 'Restart level' : 'Reset model'}</button>}
           {appView === 'workspace' && <button type="button" className="help-button" onClick={() => { setGuideTab('controls'); setShowHelp(true) }}>Controls</button>}
           <button type="button" className="text-button topbar-data" onClick={openDataManager}>Data</button>
+          <button type="button" className="text-button" onClick={() => setAppView('settings')}>Settings</button>
           <button type="button" className="text-button fullscreen-button" onClick={() => void toggleFullscreen()} disabled={!document.fullscreenEnabled}>{isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}</button>
           <a className="author-link" href="https://github.com/Chrasts/Logic_semantics_game" target="_blank" rel="noreferrer" aria-label="Open the Logic Model Builder GitHub repository">GitHub</a>
         </div>
       </header>
 
       <main id="main-content" className="main-content" tabIndex={-1}>
+
+      {appView === 'home' && (
+        <section className="content-screen home-screen" aria-labelledby="home-title">
+          <div className="home-hero"><div><p className="eyebrow">A visual modal-logic laboratory</p><h1 id="home-title">Logic Model Builder</h1><p>Build Kripke models, test modal formulas, and see how relations between possible worlds shape necessity and possibility. Made for learning, teaching, and exploring formal reasoning.</p></div><div className="home-progress"><span>Local progress</span><strong>{tutorialCompleted + overallCampaignCompleted}/{tutorialLevels.length + overallCampaignLevels}</strong><small>learning activities complete</small><button type="button" className="primary-action" onClick={continueLearning}>{tutorialCompleted < tutorialLevels.length ? 'Continue learning' : 'Continue campaign'}</button></div></div>
+          <div className="home-actions home-primary-actions" aria-label="Main menu">
+            <button type="button" className="home-menu-tile featured" onClick={() => setAppView('play')}>PLAY</button>
+            <button type="button" className="home-menu-tile" onClick={() => { setGuideTab('overview'); setAppView('guide') }}>LEARN</button>
+          </div>
+          <div className="home-secondary"><button type="button" aria-label="Open profile from home" onClick={() => setAppView('profile')}><strong>Profile</strong></button><button type="button" aria-label="Open settings from home" onClick={() => setAppView('settings')}><strong>Settings</strong></button><button type="button" aria-label="Open data manager from home" onClick={openDataManager}><strong>Data</strong></button></div>
+        </section>
+      )}
+
+      {appView === 'play' && (
+        <section className="content-screen play-screen" aria-labelledby="play-title">
+          <div className="screen-hero compact"><div><p className="eyebrow">Choose a mode</p><h1 id="play-title">Play</h1><p>Learn the tools, solve structured problems, or experiment freely.</p></div></div>
+          <div className="home-actions play-actions">
+            <article className="featured"><span>Recommended first</span><h2>Tutorial</h2><p>Learn the interface and the semantic scopes used throughout the game.</p><button type="button" className="primary-action" onClick={() => setAppView('tutorial')}>Open tutorial</button></article>
+            <article><span>Guided challenges</span><h2>Campaigns</h2><p>Solve countermodel, frame-engineering, validity, and correspondence missions.</p><button type="button" className="secondary-button" onClick={() => setAppView('campaigns')}>Browse campaigns</button></article>
+            <article><span>Free construction</span><h2>Sandbox</h2><p>Build and verify finite Kripke models without mission restrictions.</p><button type="button" className="secondary-button" onClick={returnToSandbox}>Open sandbox</button></article>
+          </div>
+        </section>
+      )}
+
+      {appView === 'settings' && (
+        <section className="content-screen settings-screen" aria-labelledby="settings-title">
+          <div className="screen-hero compact"><div><p className="eyebrow">Local preferences</p><h1 id="settings-title" className="clean-display">Settings</h1><p>These display preferences are stored only in this browser and do not change modal semantics or mission rules.</p></div></div>
+          <div className="settings-grid">
+            <article><h2>Workspace density</h2><p>Comfortable spacing favors reading; compact spacing keeps more controls visible.</p><div className="settings-choice"><button type="button" className={interfaceDensity === 'comfortable' ? 'active' : ''} aria-pressed={interfaceDensity === 'comfortable'} onClick={() => setInterfaceDensity('comfortable')}>Comfortable</button><button type="button" className={interfaceDensity === 'compact' ? 'active' : ''} aria-pressed={interfaceDensity === 'compact'} onClick={() => setInterfaceDensity('compact')}>Compact</button></div></article>
+            <article><h2>Map display</h2><label><input type="checkbox" checked={showMinimap} onChange={(event) => setShowMinimap(event.target.checked)} /> Show minimap</label><label><input type="checkbox" checked={showDerivedEdges} onChange={(event) => setShowDerivedEdges(event.target.checked)} /> Show edges derived from enforced frame properties</label></article>
+            <article><h2>Motion</h2><label><input type="checkbox" checked={reduceMotion} onChange={(event) => setReduceMotion(event.target.checked)} /> Reduce interface animation</label><p>The operating-system reduced-motion preference is respected independently.</p></article>
+            <article><h2>Window</h2><p>Fullscreen is optional and depends on browser support and embedding policy.</p><button type="button" className="secondary-button" onClick={() => void toggleFullscreen()} disabled={!document.fullscreenEnabled}>{isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}</button></article>
+          </div>
+        </section>
+      )}
 
       {appView === 'tutorial' && (
         <section className="content-screen tutorial-screen" aria-labelledby="tutorial-screen-title">
@@ -1378,12 +1464,31 @@ export function App() {
 
       {appView === 'guide' && (
         <section className="content-screen guide-screen" aria-labelledby="guide-screen-title">
-          <div className="screen-hero compact"><div><p className="eyebrow">Reference</p><h1 id="guide-screen-title">Guide</h1><p>Modal semantics, application controls, and the vocabulary used to define levels.</p></div>{isGuidedMode && <button type="button" className="secondary-button" onClick={() => setAppView('workspace')}>Return to current mission</button>}</div>
-          <div className="guide-tabs" role="tablist" aria-label="Guide sections"><button type="button" role="tab" aria-selected={guideTab === 'theory'} className={guideTab === 'theory' ? 'active' : ''} onClick={() => setGuideTab('theory')}>Modal logic</button><button type="button" role="tab" aria-selected={guideTab === 'controls'} className={guideTab === 'controls' ? 'active' : ''} onClick={() => setGuideTab('controls')}>Controls</button><button type="button" role="tab" aria-selected={guideTab === 'objectives'} className={guideTab === 'objectives' ? 'active' : ''} onClick={() => setGuideTab('objectives')}>Objectives & constraints</button></div>
+          <div className="screen-hero compact"><div><p className="eyebrow">Concepts and controls</p><h1 id="guide-screen-title" className="clean-display">Learn &amp; Reference</h1><p>Begin with an intuitive picture of modal logic, continue into formal Kripke semantics, or look up exactly how the game works.</p></div>{isGuidedMode && <button type="button" className="secondary-button" onClick={() => setAppView('workspace')}>Return to current mission</button>}</div>
+          {guideTab !== 'overview' && <div className="guide-local-nav"><button type="button" className="guide-overview-back" onClick={() => setGuideTab('overview')}>← Learn overview</button><div className="guide-path-label">{guideTab === 'start' ? 'Intuitive introduction' : guideTab === 'objectives' || guideTab === 'controls' ? 'How to play' : 'Formal semantics'}</div></div>}
+          {guideTab !== 'overview' && <div className="guide-tabs" role="tablist" aria-label="Guide sections">{activeGuideTabs.map(([tab, label]) => <button type="button" role="tab" aria-selected={guideTab === tab} className={guideTab === tab ? 'active' : ''} onClick={() => setGuideTab(tab)} key={tab}>{label}</button>)}</div>}
           <div className="guide-page-grid">
-            {guideTab === 'theory' && <><article><h2>Frames and models</h2><p>F = ⟨W,R⟩ and M = ⟨W,R,ν⟩, with ν: Prop → ℘(W).</p></article><article><h2>Satisfaction</h2><p>M,w ⊨ φ states truth at w. □ quantifies over all accessible worlds; ◇ over at least one.</p></article><article><h2>Modal clauses</h2><p>M,w ⊨ □φ iff every v with wRv satisfies φ. M,w ⊨ ◇φ iff some such v satisfies φ.</p></article><article><h2>Global scopes</h2><p>M ⊨ φ checks every world under ν; F ⊨ φ additionally checks every valuation.</p></article></>}
+            {guideTab === 'overview' && <div className="learn-paths guide-wide" aria-label="Learning paths">
+              <button type="button" className="learn-path intuitive" onClick={() => setGuideTab('start')}><span>01 · No logic background required</span><strong>Modal Logic: Intuitive Introduction</strong><p>Possible worlds, accessible alternatives, necessity, possibility, and where modal reasoning is used.</p><b>Start introduction →</b></button>
+              <button type="button" className="learn-path formal" onClick={() => setGuideTab('theory')}><span>02 · Mathematical reference</span><strong>Formal Modal Semantics</strong><p>Kripke frames and models, satisfaction, modal clauses, semantic scopes, and frame properties.</p><b>Open formal guide →</b></button>
+              <button type="button" className="learn-path gameplay" onClick={() => setGuideTab('controls')}><span>03 · Game and interface</span><strong>How to Play</strong><p>Build models, edit relations and valuations, understand objectives, verify answers, and manage local data.</p><b>Open game guide →</b></button>
+            </div>}
+            {guideTab === 'start' && <>
+              <details className="intro-topic guide-wide"><summary><span><small>The basic idea</small><strong>Reasoning about alternatives</strong></span><i aria-hidden="true">+</i></summary><div className="intro-topic-body"><p>Ordinary logic asks whether a statement is true or false. Modal logic can also ask whether it must be true, could be true, is known, or will be true. It does this by comparing a situation with relevant alternatives.</p></div></details>
+              <details className="intro-topic"><summary><span><small>Possible worlds</small><strong>Different ways things could be</strong></span><i aria-hidden="true">+</i></summary><div className="intro-topic-body"><p>A world represents one possible state of affairs. It need not be a whole universe: it can represent a system state, a moment in time, or one way the available information might be.</p></div></details>
+              <details className="intro-topic"><summary><span><small>Relations</small><strong>Which alternatives count?</strong></span><i aria-hidden="true">+</i></summary><div className="intro-topic-body"><p>An arrow from one world to another says that the second world is accessible from the first. The arrows determine which alternatives matter from each point of view.</p></div></details>
+              <details className="intro-topic"><summary><span><small>Modal questions</small><strong>Possible and necessary</strong></span><i aria-hidden="true">+</i></summary><div className="intro-topic-body"><p>Something is possible when it is true in at least one accessible world. It is necessary when it is true in every accessible world.</p></div></details>
+              <details className="intro-topic"><summary><span><small>Why the arrows matter</small><strong>Structure changes truth</strong></span><i aria-hidden="true">+</i></summary><div className="intro-topic-body"><p>The same facts placed in the same worlds can give different modal answers when the arrows change. Much of the game is about understanding that interaction.</p></div></details>
+              <details className="intro-topic"><summary><span><small>Applications</small><strong>Where modal logic appears</strong></span><i aria-hidden="true">+</i></summary><div className="intro-topic-body"><p>Modal ideas are used in philosophy, computer-system verification, knowledge and multi-agent reasoning, linguistics, and the logic of time and action.</p></div></details>
+              <details className="intro-topic guide-wide"><summary><span><small>Next step</small><strong>From intuition to mathematics</strong></span><i aria-hidden="true">+</i></summary><div className="intro-topic-body"><p>This introduction deliberately avoids notation. Continue to Formal semantics for Kripke frames and models, or open Box &amp; diamond for the precise truth conditions of the two modal operators.</p></div></details>
+            </>}
+            {guideTab === 'theory' && <><article><h2>Kripke frame</h2><p><strong>F = ⟨W,R⟩</strong>, where W is a non-empty set of worlds and <strong>R ⊆ W × W</strong> is the accessibility relation.</p></article><article><h2>Valuation</h2><p><strong>ν: Prop → ℘(W)</strong> assigns each propositional atom the worlds at which it is true.</p></article><article><h2>Kripke model</h2><p><strong>M = ⟨W,R,ν⟩</strong>. A pointed model additionally singles out an evaluation world w.</p></article><article><h2>Satisfaction</h2><p><strong>M,w ⊨ φ</strong> means that φ is true at w in M. Boolean connectives retain their classical truth conditions at each world.</p></article></>}
+            {guideTab === 'operators' && <><article><h2>Necessity</h2><p><strong>M,w ⊨ □φ</strong> iff for every v, if wRv then M,v ⊨ φ.</p></article><article><h2>Possibility</h2><p><strong>M,w ⊨ ◇φ</strong> iff there is some v such that wRv and M,v ⊨ φ.</p></article><article><h2>Vacuous truth</h2><p>If w has no successors, □φ is true and ◇φ is false. Necessity does not require a witness; possibility does.</p></article><article><h2>Nested modalities</h2><p>In □◇p, the game checks every immediate successor and then looks from each of them for a further p-successor.</p></article></>}
+            {guideTab === 'scopes' && <><article><h2>Pointed truth</h2><p><strong>M,w ⊨ φ</strong>: evaluate one selected world under the displayed valuation.</p></article><article><h2>Model-global truth</h2><p><strong>M ⊨ φ</strong>: φ must hold at every world of the displayed model while ν remains fixed.</p></article><article><h2>Frame validity</h2><p><strong>F ⊨ φ</strong>: φ must hold at every world under every valuation on the displayed finite frame.</p></article><article><h2>Counterexamples</h2><p>A pointed or global failure identifies a world. Failure of frame validity additionally supplies a countervaluation.</p></article></>}
+            {guideTab === 'relations' && <><article><h2>Frame properties</h2><p>Reflexive, symmetric, transitive, serial, Euclidean, irreflexive, and acyclic describe the accessibility relation, not the current valuation.</p></article><article><h2>Validate and enforce</h2><p>Validate reports whether a relation has a property. Enforce derives the closure needed for supported properties and displays derived edges separately.</p></article><article><h2>Modal axioms</h2><p>T, D, B, 4, and 5 are modal axiom schemas. Their validity characterizes familiar classes of frames.</p></article><article><h2>Instance comparison</h2><p>The Correspondence Lab compares both sides on one finite frame. Agreement there illustrates a theorem; it is not itself a general proof.</p></article></>}
             {guideTab === 'controls' && <><article><h2>Worlds</h2><p>Add, rename, move, value, select, or delete worlds from the map and side panels.</p></article><article><h2>Relations</h2><p>Drag between handles or use Accessibility. Select or double-click explicit edges to delete them.</p></article><article><h2>Workspace</h2><p>Undo, redo, collapse panels, fit the map, inspect the minimap, and open Controls while playing.</p></article><article><h2>Local data</h2><p>Data exports or imports model JSON and resets the saved sandbox or learning progress independently.</p></article></>}
             {guideTab === 'objectives' && <><article><h2>Objective scopes</h2><p>Pointed, model-global, frame-validity, and correspondence objectives use different semantic quantification.</p></article><article><h2>Construction constraints</h2><p>Levels can bound size, require or forbid edges and atoms, and require or exclude frame properties.</p></article><article><h2>Locked inputs</h2><p>Formulas, worlds, valuations, relations, evaluation worlds, and constraint controls may be fixed.</p></article><article><h2>Optional bonuses</h2><p>Some missions evaluate an additional construction challenge only after the primary objective succeeds.</p></article></>}
+            {guideTab === 'glossary' && <><article><h2>World</h2><p>An element of W representing a possible state. Worlds may share the same valuation while differing structurally.</p></article><article><h2>Successor</h2><p>v is a successor of w when wRv. Arrow direction matters.</p></article><article><h2>Valuation</h2><p>The assignment ν of propositional atoms to sets of worlds.</p></article><article><h2>Countervaluation</h2><p>A valuation witnessing that a formula is not valid on a frame.</p></article><article><h2>Explicit edge</h2><p>An accessibility pair stored directly in the construction.</p></article><article><h2>Derived edge</h2><p>An edge added by an enforced relational closure rather than drawn explicitly.</p></article></>}
           </div>
         </section>
       )}
@@ -1405,22 +1510,19 @@ export function App() {
       {appView === 'workspace' && activeLevel && (
         <section className="mission-hud" aria-label="Current level">
           <div className="mission-context">
-            {gameMode === 'campaign' && (
-              <label className="campaign-track-picker"><span>Campaign</span><select aria-label="Campaign track" value={playingTrackIndex ?? campaignTrackIndex} onChange={(event) => selectCampaignTrack(Number(event.target.value))}>{campaignTracks.map((track, index) => <option key={track.id} value={index}>{track.title}</option>)}</select><small>{playingTrack.description}</small></label>
-            )}
+            {gameMode === 'campaign' && <label className="campaign-track-picker"><span>Campaign</span><select aria-label="Campaign track" value={playingTrackIndex ?? campaignTrackIndex} onChange={(event) => selectCampaignTrack(Number(event.target.value))}>{campaignTracks.map((track, index) => <option key={track.id} value={index}>{track.title}</option>)}</select></label>}
             <div className="campaign-progress"><span>{activeLevel.chapter} · {campaignLevelIndex + 1}/{activeLevels.length}</span>{completedLevelIds.has(activeLevel.id) && <b>Complete</b>}</div>
             <strong>{activeLevel.title}</strong>
             <small>{activeLevel.concept}</small>
           </div>
           <div className="mission-copy">
-            {activeLevel.briefing && <p className="tutorial-briefing">{activeLevel.briefing}</p>}
             <div className="level-objective"><span>Objective</span><p>{activeLevel.instruction}</p></div>
-            <div className="level-learning"><span>Learning objective</span><p>{activeLevel.learningObjective ?? activeLevel.concept}</p></div>
             {(activeLevel.constraints || activeLevel.frameRules || activeLevel.requiredFrameRules) && <div className="level-constraints"><span>Constraints</span><small>{[
               ...describeConstructionConstraints(activeLevel.constraints ?? {}),
               ...Object.entries(activeLevel.frameRules ?? {}).filter(([, mode]) => mode !== 'off').map(([property]) => property),
               ...Object.entries(activeLevel.requiredFrameRules ?? {}).map(([property, mode]) => `${property}: ${mode}`),
             ].filter(Boolean).join(' · ')}</small></div>}
+            {(activeLevel.briefing || activeLevel.learningObjective) && <details className="mission-details"><summary>Level details</summary><div>{activeLevel.briefing && <p>{activeLevel.briefing}</p>}<span>Learning objective</span><p>{activeLevel.learningObjective ?? activeLevel.concept}</p></div></details>}
           </div>
           <div className="campaign-navigation">
             <button type="button" disabled={campaignLevelIndex === 0} onClick={() => loadLevel(campaignLevelIndex - 1)}>Previous</button>
@@ -1547,7 +1649,7 @@ export function App() {
                 </Panel>
               )}
               <Background color="#b9b6aa" gap={24} size={1} />
-              <MiniMap
+              {showMinimap && <MiniMap
                 pannable
                 zoomable
                 nodeComponent={MiniMapWithRelations}
@@ -1557,7 +1659,7 @@ export function App() {
                 nodeBorderRadius={50}
                 maskColor="rgba(236, 233, 223, .62)"
                 ariaLabel="Model overview and viewport control"
-              />
+              />}
               <Controls showInteractive={false} />
             </ReactFlow>
           </div>
@@ -1590,7 +1692,7 @@ export function App() {
         <div className="panel edge-panel">
           <div className="panel-heading">
             <span className="step">04</span>
-            <div><h2>Accessibility</h2><p>Directed edges and reflexivity</p></div>
+            <div><h2>Accessibility</h2></div>
           </div>
           <div className="edge-list">
             {edges.length === 0 && <p className="empty-state">The model has no explicit edges.</p>}
@@ -1617,7 +1719,7 @@ export function App() {
         <div className="panel verify-panel">
           <div className="panel-heading">
             <span className="step">05</span>
-            <div><h2>Verification</h2><p>Test the active objective</p></div>
+            <div><h2>Verification</h2></div>
           </div>
           <div className="objective-summary">
             <span>Active target</span>

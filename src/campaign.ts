@@ -72,7 +72,7 @@ export interface CampaignTrack {
 
 const tutorialLevelDefinitions: readonly GameLevel[] = [
   {
-    id: 'tutorial-evaluation', chapter: 'Tutorial', title: 'Evaluation world', concept: '“True somewhere” means true at the selected world',
+    id: 'tutorial-evaluation', chapter: 'Tutorial', title: 'Evaluation world', concept: 'Truth at the selected world',
     learningObjective: 'Distinguish truth at a designated world from truth elsewhere in the same model.',
     briefing: 'The petrol outline marks the evaluation world used by a pointed objective. Select a world on the map, or use the Evaluation world control in the Verification panel.',
     instruction: 'Make p true at the evaluation world.', formula: 'p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
@@ -100,16 +100,16 @@ const tutorialLevelDefinitions: readonly GameLevel[] = [
     learningObjective: 'Use accessibility to provide a witness world for a possibility formula.',
     briefing: 'A relation is a directed arrow between worlds. Create one by dragging between handles on the map or by using the Accessibility panel.',
     instruction: 'Make ◇p true at w0.', formula: '◇p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
-    worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
-    edges: [], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 1, maximumEdges: 1 }, editable: ['edges'],
+    worlds: [{ id: 'w0', atoms: '', position: { x: 75, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 265, y: 130 } }, { id: 'w2', atoms: 'q', position: { x: 455, y: 130 } }],
+    edges: [], constraints: { minimumWorlds: 3, maximumWorlds: 3, minimumEdges: 1, maximumEdges: 1, requiredEdges: [{ from: 'w0', to: 'w1' }] }, editable: ['edges'],
   },
   {
-    id: 'tutorial-remove-relation', chapter: 'Tutorial', title: 'Editing accessibility', concept: 'M,w ⊨ □φ',
+    id: 'tutorial-remove-relation', chapter: 'Tutorial', title: 'Necessity and valuations', concept: 'M,w ⊨ □φ',
     learningObjective: 'Recognize that every accessible successor must satisfy the operand of □.',
-    briefing: 'Select an explicit relation on the map and use Delete selected edge, double-click it, or remove it from the Accessibility panel.',
-    instruction: 'Use exactly one relation and make □p true at w0.', formula: '□p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
+    briefing: 'The arrows are already fixed. Use the valuation editor to make p true at every world accessible from w0.',
+    instruction: 'Make □p true at w0 by changing the valuation.', formula: '□p', scope: 'pointed', targetTruth: true, evaluationWorld: 'w0',
     worlds: [{ id: 'w0', atoms: '', position: { x: 100, y: 130 } }, { id: 'w1', atoms: 'p', position: { x: 390, y: 130 } }],
-    edges: [{ from: 'w0', to: 'w0' }, { from: 'w0', to: 'w1' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 1, maximumEdges: 1 }, editable: ['edges'],
+    edges: [{ from: 'w0', to: 'w0' }, { from: 'w0', to: 'w1' }], constraints: { minimumWorlds: 2, maximumWorlds: 2, minimumEdges: 2, maximumEdges: 2, requiredEdges: [{ from: 'w0', to: 'w0' }, { from: 'w0', to: 'w1' }] }, editable: ['valuations'],
   },
   {
     id: 'tutorial-global-model', chapter: 'Tutorial', title: 'Global truth in a model', concept: 'M ⊨ φ iff ∀w ∈ W: M,w ⊨ φ',

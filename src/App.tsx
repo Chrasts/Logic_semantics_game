@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
-  Controls,
   MarkerType,
   MiniMap,
   MiniMapNode,
@@ -325,6 +324,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const [learnLessonId, setLearnLessonId] = useState<string | null>(null)
   const [learnExampleStep, setLearnExampleStep] = useState(0)
   const [learnTransferActive, setLearnTransferActive] = useState(false)
+  const [learnConceptOpen, setLearnConceptOpen] = useState(false)
   const [customLevels, setCustomLevels] = useState<readonly GameLevel[]>([])
   const [customCampaignTitle, setCustomCampaignTitle] = useState('Custom campaign')
   const [customCampaignDescription, setCustomCampaignDescription] = useState('A user-authored sequence of modal logic missions.')
@@ -397,8 +397,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
   const [showMinimap, setShowMinimap] = useState(initialInterfaceSettings.showMinimap)
   const [interfaceDensity, setInterfaceDensity] = useState<InterfaceDensity>(initialInterfaceSettings.density)
   const [reduceMotion, setReduceMotion] = useState(initialInterfaceSettings.reduceMotion)
-  const [leftPanelOpen, setLeftPanelOpen] = useState(true)
-  const [rightPanelOpen, setRightPanelOpen] = useState(true)
+  const [leftPanelOpen, setLeftPanelOpen] = useState(false)
+  const [rightPanelOpen, setRightPanelOpen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement))
   const [selectedWorldKey, setSelectedWorldKey] = useState<number | null>(null)
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null)
@@ -779,6 +779,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     setNextEdgeKey(level.edges.length)
     setSelectedWorldKey(null)
     setSelectedEdgeKey(null)
+    setLeftPanelOpen(false)
+    setRightPanelOpen(false)
     setEditorMode('edit')
     setResult(null)
     setPredictionAnswer('')
@@ -848,13 +850,15 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
     if (gameMode === 'sandbox') sandboxBeforeCampaign.current = { formulaSource, comparisonFormulaSource, worlds, edges, evaluationWorld, targetTruth, frameRules, evaluationScope }
     setGameMode('learn')
     setLearnLessonId(lesson.id)
-    setLearnStage('concept')
+    setLearnStage('task')
     setLearnExampleStep(0)
     setLearnTransferActive(false)
     setLearnHintLevel(1)
     setPredictionAnswer(learnProgress.predictionAnswers[lesson.id] ?? '')
     setLearnProgress((current) => ({ ...current, currentLessonId: lesson.id, highestStageByLesson: { ...current.highestStageByLesson, [lesson.id]: Math.max(current.highestStageByLesson[lesson.id] ?? 0, 0) } }))
-    setAppView('learnLesson')
+    loadLevel(index, learnTaskLevels)
+    setLearnConceptOpen(true)
+    setAppView('workspace')
   }
 
   const activeLearnLesson = learnLessonId ? learnLessons.find(({ id }) => id === learnLessonId) : undefined
@@ -1104,7 +1108,6 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       )
       if (courseLesson && overallSuccess) {
         setLearnStage(learnTransferActive ? 'completion' : 'feedback')
-        setAppView('learnLesson')
       }
       if (overallSuccess && activeLevel) {
         setCompletedLevelIds((current) => new Set([...current, activeLevel.id]))
@@ -1498,14 +1501,8 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       <header className="topbar">
         <div className="brand">{appView !== 'home' && <button className="back-button" type="button" onClick={goBack} aria-label="Go back">← <span>Back</span></button>}<span className="brand-mark">◇</span><strong>Logic Model Builder</strong><nav className="product-nav" aria-label="Global navigation"><button className={appView === 'home' ? 'active' : ''} type="button" onClick={() => setAppView('home')}>Home</button><button className={appView === 'learn' || appView === 'learnLesson' || gameMode === 'learn' ? 'active' : ''} type="button" onClick={() => setAppView('learn')}>Learn</button><button className={appView === 'campaigns' || gameMode === 'guidedCampaign' ? 'active' : ''} type="button" onClick={() => setAppView('campaigns')}>Campaigns</button><button className={appView === 'workspace' && gameMode === 'sandbox' ? 'active' : ''} type="button" onClick={returnToSandbox}>Sandbox</button><button className={appView === 'create' ? 'active' : ''} type="button" onClick={() => setAppView('create')}>Create</button>{appView === 'workspace' && <span className="current-mode">{gameMode === 'sandbox' ? 'Sandbox' : gameMode === 'learn' ? 'Learn' : gameMode === 'guidedCampaign' ? 'Campaign' : gameMode === 'tutorial' ? 'Legacy lesson' : gameMode === 'campaign' ? 'Practice' : customSequenceLabel}</span>}<button className={appView === 'guide' ? 'active' : ''} type="button" onClick={() => { setGuideTab('overview'); setAppView('guide') }}>Reference</button><button className={appView === 'profile' ? 'active' : ''} type="button" onClick={() => setAppView('profile')}>Profile</button></nav></div>
         <div className="topbar-actions">
-          {appView === 'workspace' && <>
-          <button type="button" className="icon-button" onClick={undo} disabled={historyPast.current.length === 0} aria-label="Undo" title="Undo">↶</button>
-          <button type="button" className="icon-button" onClick={redo} disabled={historyFuture.current.length === 0} aria-label="Redo" title="Redo">↷</button>
-          <button type="button" className="icon-button" onClick={() => setLeftPanelOpen((open) => !open)} aria-label="Toggle left panels" aria-pressed={!leftPanelOpen} title="Toggle left panels">◧</button>
-          <button type="button" className="icon-button" onClick={() => setRightPanelOpen((open) => !open)} aria-label="Toggle right panels" aria-pressed={!rightPanelOpen} title="Toggle right panels">◨</button>
-          </>}
           {appView === 'workspace' && <button type="button" className="text-button" onClick={resetSandbox}>{isGuidedMode ? 'Restart level' : 'Reset model'}</button>}
-          {appView === 'workspace' && <button type="button" className="help-button" onClick={() => { setGuideTab('controls'); setShowHelp(true) }}>Controls</button>}
+          {appView === 'workspace' && <button type="button" className="help-button" onClick={() => { setGuideTab('controls'); setShowHelp(true) }}>Modal Logic Guide</button>}
           <button type="button" className="text-button topbar-data" onClick={openDataManager}>Data</button>
           <button type="button" className="text-button" onClick={() => setAppView('settings')}>Settings</button>
           <button type="button" className="text-button fullscreen-button" onClick={() => void toggleFullscreen()} disabled={!document.fullscreenEnabled}>{isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}</button>
@@ -1540,7 +1537,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       {appView === 'learn' && (
         <section className="content-screen learn-course-screen" aria-labelledby="learn-course-title">
           <div className="screen-hero compact"><div><p className="eyebrow">Guided course</p><h1 id="learn-course-title">{learnCourse.title}</h1><p>{learnCourse.description}</p><button type="button" className="text-button" onClick={() => setAppView('practice')}>Open Practice Library</button></div><div className="collection-progress"><strong>{learnProgress.completedLessonIds.length}/{learnLessons.length}</strong><span>lessons complete</span><div className="progress-meter"><i style={{ width: `${learnProgress.completedLessonIds.length / learnLessons.length * 100}%` }} /></div></div></div>
-          <div className="learn-chapter-list">{learnCourse.chapters.map((chapter) => { const completed = chapter.lessons.filter((lesson) => learnProgress.completedLessonIds.includes(lesson.id)).length; const chapterComplete = completed === chapter.lessons.length && chapter.lessons.length > 0; const available = chapter.lessons.length > 0 && chapter.prerequisiteChapterIds.every((id) => learnProgress.completedChapterIds.includes(id)); const currentIndex = learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id && !learnProgress.completedLessonIds.includes(lesson.id)); return <article className={!available ? 'locked' : chapterComplete ? 'complete' : ''} key={chapter.id}><div><p className="eyebrow">{chapter.lessons.length === 0 ? 'Coming later' : available ? chapterComplete ? 'Completed' : 'Available' : 'Locked'}</p><h2>{chapter.title}</h2><p>{chapter.description}</p>{chapter.lessons.length > 0 && <small>{completed}/{chapter.lessons.length} lessons · {chapter.lessons[currentIndex < 0 ? 0 : currentIndex]?.learningObjective}</small>}{chapterComplete && <div className="chapter-recap"><strong>Chapter recap</strong><ul>{chapter.completionSummary.map((item) => <li key={item}>{item}</li>)}</ul>{chapter.nextPreview && <p>{chapter.nextPreview}</p>}</div>}</div>{chapter.lessons.length > 0 ? <button type="button" className="primary-action" disabled={!available} onClick={() => startLearnLesson(currentIndex < 0 ? 0 : currentIndex)}>{completed ? chapterComplete ? 'Replay chapter' : 'Continue' : 'Start'}</button> : <span className="chapter-coming">Coming later</span>}</article> })}</div>
+          <div className="learn-chapter-list">{learnCourse.chapters.map((chapter) => { const completed = chapter.lessons.filter((lesson) => learnProgress.completedLessonIds.includes(lesson.id)).length; const chapterComplete = completed === chapter.lessons.length && chapter.lessons.length > 0; const available = chapter.lessons.length > 0; const currentIndex = learnLessons.findIndex((lesson) => lesson.chapterId === chapter.id && !learnProgress.completedLessonIds.includes(lesson.id)); return <article className={chapterComplete ? 'complete' : ''} key={chapter.id}><div><p className="eyebrow">{chapter.lessons.length === 0 ? 'Coming later' : chapterComplete ? 'Completed' : 'Available'}</p><h2>{chapter.title}</h2><p>{chapter.description}</p>{chapter.lessons.length > 0 && <small>{completed}/{chapter.lessons.length} lessons · {chapter.lessons[currentIndex < 0 ? 0 : currentIndex]?.learningObjective}</small>}{chapterComplete && <div className="chapter-recap"><strong>Chapter recap</strong><ul>{chapter.completionSummary.map((item) => <li key={item}>{item}</li>)}</ul>{chapter.nextPreview && <p>{chapter.nextPreview}</p>}</div>}{chapter.lessons.length > 0 && <ol className="lesson-series">{chapter.lessons.map((lesson) => { const lessonIndex = learnLessons.findIndex(({ id }) => id === lesson.id); const done = learnProgress.completedLessonIds.includes(lesson.id); return <li key={lesson.id}><span>{lessonIndex + 1}</span><div><strong>{lesson.title}</strong><small>{lesson.learningObjective}</small></div><button type="button" onClick={() => startLearnLesson(lessonIndex)}>{done ? 'Replay' : 'Open'}</button></li> })}</ol>}</div>{chapter.lessons.length > 0 ? <button type="button" className="primary-action" disabled={!available} onClick={() => startLearnLesson(currentIndex < 0 ? 0 : currentIndex)}>{completed ? chapterComplete ? 'Replay chapter' : 'Continue' : 'Start'}</button> : <span className="chapter-coming">Coming later</span>}</article> })}</div>
         </section>
       )}
       {appView === 'learnLesson' && activeLearnLesson && <LearnLessonView lesson={activeLearnLesson} stage={learnStage} predictionAnswer={predictionAnswer} predictionMessage={predictionAnswer ? (activeLearnLesson.task.prediction?.kind === 'truth' ? `You predict ${predictionAnswer}. You will test this in the workspace.` : `You selected ${predictionAnswer}. You will test this in the workspace.`) : undefined} exampleStep={learnExampleStep} onStage={(stage) => { setLearnStage(stage); if (stage === 'transfer') setLearnTransferActive(true) }} onPrediction={(answer) => { setPredictionAnswer(answer); const prediction = activeLearnLesson.task.prediction; const correct = prediction?.kind === 'truth' ? undefined : prediction?.expectedChoice === answer; setLearnProgress((current) => ({ ...current, predictionAnswers: { ...current.predictionAnswers, [activeLearnLesson.id]: answer }, predictionCorrectness: correct === undefined ? current.predictionCorrectness : { ...current.predictionCorrectness, [activeLearnLesson.id]: correct } })) }} onExampleStep={setLearnExampleStep} onBeginTask={beginLearnTask} onBack={() => { setLearnTransferActive(false); setAppView('learn') }} />}
@@ -1603,7 +1600,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             {guideTab === 'operators' && <><article><h2>Necessity</h2><p><strong>M,w ⊨ □φ</strong> iff for every v, if wRv then M,v ⊨ φ.</p></article><article><h2>Possibility</h2><p><strong>M,w ⊨ ◇φ</strong> iff there is some v such that wRv and M,v ⊨ φ.</p></article><article><h2>Vacuous truth</h2><p>If w has no successors, □φ is true and ◇φ is false. Necessity does not require a witness; possibility does.</p></article><article><h2>Nested modalities</h2><p>In □◇p, the game checks every immediate successor and then looks from each of them for a further p-successor.</p></article></>}
             {guideTab === 'scopes' && <><article><h2>Pointed truth</h2><p><strong>M,w ⊨ φ</strong>: evaluate one selected world under the displayed valuation.</p></article><article><h2>Model-global truth</h2><p><strong>M ⊨ φ</strong>: φ must hold at every world of the displayed model while ν remains fixed.</p></article><article><h2>Frame validity</h2><p><strong>F ⊨ φ</strong>: φ must hold at every world under every valuation on the displayed finite frame.</p></article><article><h2>Counterexamples</h2><p>A pointed or global failure identifies a world. Failure of frame validity additionally supplies a countervaluation.</p></article></>}
             {guideTab === 'relations' && <><article><h2>Frame properties</h2><p>Reflexive, symmetric, transitive, serial, Euclidean, irreflexive, and acyclic describe the accessibility relation, not the current valuation.</p></article><article><h2>Validate and enforce</h2><p>Validate reports whether a relation has a property. Enforce derives the closure needed for supported properties and displays derived edges separately.</p></article><article><h2>Modal axioms</h2><p>T, D, B, 4, and 5 are modal axiom schemas. Their validity characterizes familiar classes of frames.</p></article><article><h2>Instance comparison</h2><p>The Correspondence Lab compares both sides on one finite frame. Agreement there illustrates a theorem; it is not itself a general proof.</p></article></>}
-            {guideTab === 'controls' && <><article><h2>Worlds</h2><p>Add, rename, move, value, select, or delete worlds from the map and side panels.</p></article><article><h2>Relations</h2><p>Drag between handles or use Accessibility. Select or double-click explicit edges to delete them.</p></article><article><h2>Workspace</h2><p>Undo, redo, collapse panels, fit the map, inspect the minimap, and open Controls while playing.</p></article><article><h2>Local data</h2><p>Data exports or imports model JSON and resets the saved sandbox or learning progress independently.</p></article></>}
+            {guideTab === 'controls' && <><article><h2>Worlds</h2><p>Add, rename, move, value, select, or delete worlds from the map and side panels.</p></article><article><h2>Relations</h2><p>Drag between handles or use Accessibility. Select or double-click explicit edges to delete them.</p></article><article><h2>Workspace</h2><p>Undo, redo, change editing mode, inspect the minimap, and open the Modal Logic Guide without leaving the current model.</p></article><article><h2>Local data</h2><p>Data exports or imports model JSON and resets the saved sandbox or learning progress independently.</p></article></>}
             {guideTab === 'objectives' && <><article><h2>Objective scopes</h2><p>Pointed, model-global, frame-validity, and correspondence objectives use different semantic quantification.</p></article><article><h2>Construction constraints</h2><p>Levels can bound size, require or forbid edges and atoms, and require or exclude frame properties.</p></article><article><h2>Locked inputs</h2><p>Formulas, worlds, valuations, relations, evaluation worlds, and constraint controls may be fixed.</p></article><article><h2>Optional bonuses</h2><p>Some missions evaluate an additional construction challenge only after the primary objective succeeds.</p></article></>}
             {guideTab === 'glossary' && <><article><h2>World</h2><p>An element of W representing a possible state. Worlds may share the same valuation while differing structurally.</p></article><article><h2>Successor</h2><p>v is a successor of w when wRv. Arrow direction matters.</p></article><article><h2>Valuation</h2><p>The assignment ν of propositional atoms to sets of worlds.</p></article><article><h2>Countervaluation</h2><p>A valuation witnessing that a formula is not valid on a frame.</p></article><article><h2>Explicit edge</h2><p>An accessibility pair stored directly in the construction.</p></article><article><h2>Derived edge</h2><p>An edge added by an enforced relational closure rather than drawn explicitly.</p></article></>}
           </div>
@@ -1625,12 +1622,11 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
       )}
 
       {appView === 'workspace' && activeLevel && (
-        <section className="mission-hud" aria-label="Current level">
+        <section className={`mission-hud ${courseLesson ? 'course-mission-hud' : ''}`} aria-label="Current level">
           <div className="mission-context">
             {gameMode === 'campaign' && <label className="campaign-track-picker"><span>Campaign</span><select aria-label="Campaign track" value={playingTrackIndex ?? campaignTrackIndex} onChange={(event) => selectCampaignTrack(Number(event.target.value))}>{campaignTracks.map((track, index) => <option key={track.id} value={index}>{track.title}</option>)}</select></label>}
             <div className="campaign-progress"><span>{activeLevel.chapter} · {campaignLevelIndex + 1}/{activeLevels.length}</span>{completedLevelIds.has(activeLevel.id) && <b>Complete</b>}</div>
             <strong>{activeLevel.title}</strong>
-            <small>{activeLevel.concept}</small>
           </div>
           <div className="mission-copy">
             {activeLevel.comparisonFormula && <div className="formula-comparison-header"><span>Formula A <code>{activeLevel.formula}</code></span><span>Formula B <code>{activeLevel.comparisonFormula}</code></span>{activeLevel.comparisonTarget && <small>Goal: A {activeLevel.comparisonTarget.formulaATruth ? 'true' : 'false'} · B {activeLevel.comparisonTarget.formulaBTruth ? 'true' : 'false'} at {activeLevel.evaluationWorld}</small>}</div>}
@@ -1640,16 +1636,16 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               ...Object.entries(activeLevel.frameRules ?? {}).filter(([, mode]) => mode !== 'off').map(([property]) => property),
               ...Object.entries(activeLevel.requiredFrameRules ?? {}).map(([property, mode]) => `${property}: ${mode}`),
             ].filter(Boolean).join(' · ')}</small></div>}
-            {(activeLevel.briefing || activeLevel.learningObjective) && <details className="mission-details"><summary>Level details</summary><div>{activeLevel.briefing && <p>{activeLevel.briefing}</p>}<span>Learning objective</span><p>{activeLevel.learningObjective ?? activeLevel.concept}</p></div></details>}
+            {!courseLesson && (activeLevel.briefing || activeLevel.learningObjective) && <details className="mission-details"><summary>Level details</summary><div>{activeLevel.briefing && <p>{activeLevel.briefing}</p>}<span>Learning objective</span><p>{activeLevel.learningObjective ?? activeLevel.concept}</p></div></details>}
           </div>
           <div className="campaign-navigation">
-            <button type="button" disabled={campaignLevelIndex === 0} onClick={() => loadLevel(campaignLevelIndex - 1)}>Previous</button>
-            <button type="button" disabled={!completedLevelIds.has(activeLevel.id) || campaignLevelIndex === activeLevels.length - 1} onClick={() => loadLevel(campaignLevelIndex + 1)}>Next level</button>
+            {courseLesson && <><button type="button" onClick={() => setLearnConceptOpen(true)}>Concept</button><button type="button" onClick={() => setAppView('learn')}>Lessons</button></>}
+            <button type="button" disabled={campaignLevelIndex === 0} onClick={() => courseLesson ? startLearnLesson(campaignLevelIndex - 1) : loadLevel(campaignLevelIndex - 1)}>Previous</button>
+            <button type="button" disabled={!completedLevelIds.has(activeLevel.id) || campaignLevelIndex === activeLevels.length - 1} onClick={() => courseLesson ? startLearnLesson(campaignLevelIndex + 1) : loadLevel(campaignLevelIndex + 1)}>Next level</button>
           </div>
         </section>
       )}
 
-      {appView === 'workspace' && courseLesson && <section className="course-lesson-bar" aria-label="Learn lesson context"><div><span>Possibility · Lesson {campaignLevelIndex + 1} of {learnLessons.length}</span><strong>{courseLesson.learningObjective}</strong></div><details><summary>Concept reminder</summary><p>{courseLesson.concept.intuitive}</p>{courseLesson.concept.formal && <p><code>{courseLesson.concept.formal}</code></p>}<ul>{courseLesson.concept.keyPoints.map((point) => <li key={point}>{point}</li>)}</ul></details><div className="course-hints"><span>Hints</span>{courseLesson.hints.map((hint, index) => <button type="button" key={hint} disabled={index + 1 > learnHintLevel} onClick={() => { setLearnHintLevel((level) => Math.max(level, index + 1)); setLearnProgress((current) => ({ ...current, hintsUsed: { ...current.hintsUsed, [courseLesson.id]: [...new Set([...(current.hintsUsed[courseLesson.id] ?? []), index + 1])] } })) }}>{index + 1}</button>)}{learnHintLevel > 0 && <p>{courseLesson.hints[learnHintLevel - 1]}</p>}</div></section>}
       {appView === 'workspace' && gameMode === 'guidedCampaign' && activeLevel && <section className="course-lesson-bar campaign-lesson-bar" aria-label="Campaign mission context"><div><span>{selectedGuidedCampaign.title} · Mission {campaignLevelIndex + 1} of {selectedGuidedCampaign.levels.length}</span><strong>{activeLevel.instruction}</strong></div>{activeLevel.targetAnalysis && <details><summary>Analyse the target</summary>{activeLevel.targetAnalysis.map((item) => <p key={item}>{item}</p>)}</details>}{activeLevel.hints && <div className="course-hints"><span>Strategic hints</span>{activeLevel.hints.map((hint, index) => <button type="button" key={hint} disabled={index + 1 > guidedHintLevel} onClick={() => setGuidedHintLevel((level) => Math.max(level, index + 1))}>{index + 1}</button>)}{guidedHintLevel > 0 && <p>{activeLevel.hints[guidedHintLevel - 1]}</p>}</div>}{activeLevel.referenceSolution && <details className="reference-solution"><summary>Reference solution</summary><p>One complete construction is shown below. It is separate from ordinary hints.</p>{(guidedHintLevel >= 3 || guestProfile.history.filter((entry) => entry.levelId === activeLevel.id && !entry.success).length >= 3) ? <><button type="button" className="secondary-button" onClick={() => { if (window.confirm('Showing the reference solution will reveal one complete construction. You can still complete the mission, but it will be recorded as assisted.')) setReferenceSolutionViewed((current) => new Set([...current, activeLevel.id])) }}>Show reference solution</button>{referenceSolutionViewed.has(activeLevel.id) && <code>Worlds: {activeLevel.referenceSolution.worlds.map((world) => `${world.id}${world.atoms ? `:{${world.atoms}}` : ':∅'}`).join(' · ')}<br />Edges: {activeLevel.referenceSolution.edges.map((edge) => `${edge.from} → ${edge.to}`).join(' · ') || '∅'}</code>}</> : <p>Available after Hint 3 or three unsuccessful attempts.</p>}</details>}</section>}
 
       {appView === 'workspace' && <section className={`workspace ${!leftPanelOpen ? 'left-collapsed' : ''} ${!rightPanelOpen ? 'right-collapsed' : ''}`} aria-label="Kripke model editor">
@@ -1747,9 +1743,13 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                   <button type="button" className={editorMode === 'evaluate' ? 'active' : ''} aria-pressed={editorMode === 'evaluate'} onClick={() => setEditorMode('evaluate')}>Evaluate</button>
                 </div>
                 <button type="button" onClick={addWorld} disabled={!canEditWorlds}>+ World</button>
-                <button type="button" onClick={() => flowInstance?.fitView({ padding: .25, duration: 250 })}>Fit view</button>
+                <button type="button" className={!leftPanelOpen ? 'panel-toggle active' : 'panel-toggle'} onClick={() => setLeftPanelOpen((open) => !open)} aria-label="Toggle Formula and goal plus Verification panels" aria-pressed={leftPanelOpen} title="Formula and goal / Verification">◧</button>
+                <button type="button" className={!rightPanelOpen ? 'panel-toggle active' : 'panel-toggle'} onClick={() => setRightPanelOpen((open) => !open)} aria-label="Toggle Worlds and valuations plus Accessibility panels" aria-pressed={rightPanelOpen} title="Worlds and valuations / Accessibility">◨</button>
+                <button type="button" onClick={undo} disabled={historyPast.current.length === 0} aria-label="Undo" title="Undo">↶</button>
+                <button type="button" onClick={redo} disabled={historyFuture.current.length === 0} aria-label="Redo" title="Redo">↷</button>
                 <button type="button" className={!showDerivedEdges ? 'muted' : ''} onClick={() => setShowDerivedEdges((show) => !show)}>{showDerivedEdges ? 'Hide' : 'Show'} derived</button>
                 <button type="button" className="frame-rules-button" onClick={() => setShowFrameRules(true)}>Constraints{frameRuleResults.length ? ` (${frameRuleResults.length})` : ''}</button>
+                {selectedEdgeKey !== null && <button type="button" className="delete-edge-button" disabled={!canEditEdges} onClick={() => deleteEdge(selectedEdgeKey)}>Delete edge</button>}
                 {editorMode === 'evaluate' && <button type="button" className="toolbar-verify" onClick={verify}>Verify</button>}
               </Panel>
               {worlds.length === 0 && (
@@ -1774,20 +1774,14 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
                 pannable
                 zoomable
                 nodeComponent={MiniMapWithRelations}
-                nodeColor={(node) => node.className === 'evaluation-node' ? '#14647a' : '#a45127'}
+                nodeColor={(node) => node.className === 'evaluation-node' ? '#14647a' : '#7a4d26'}
                 nodeStrokeColor="#f8f7f1"
                 nodeStrokeWidth={2}
                 nodeBorderRadius={50}
                 maskColor="rgba(236, 233, 223, .62)"
                 ariaLabel="Model overview and viewport control"
               />}
-              <Controls showInteractive={false} />
             </ReactFlow>
-          </div>
-          <div className="graph-toolbar">
-            <button type="button" className="delete-edge-button" disabled={selectedEdgeKey === null || !canEditEdges} onClick={() => selectedEdgeKey !== null && deleteEdge(selectedEdgeKey)}>
-              Delete selected edge
-            </button>
           </div>
         </div>
 
@@ -1875,7 +1869,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
           <div className={`result ${result?.kind ?? ''}`} role={result ? result.kind === 'error' ? 'alert' : 'status' : undefined} aria-live={result?.kind === 'error' ? 'assertive' : 'polite'} aria-atomic="true">
             <strong>{result?.message ?? 'The verification result will appear here.'}</strong>
             {result && 'detail' in result && !result.verdict && <span>{result.detail}</span>}
-            {result && 'diagnostic' in result && result.diagnostic && <p className="course-diagnostic"><strong>Course note:</strong> {result.diagnostic} {courseLesson && <button type="button" className="text-button" onClick={() => { setLearnStage('concept'); setAppView('learnLesson') }}>Review concept</button>}</p>}
+            {result && 'diagnostic' in result && result.diagnostic && <p className="course-diagnostic"><strong>Course note:</strong> {result.diagnostic} {courseLesson && <button type="button" className="text-button" onClick={() => setLearnConceptOpen(true)}>Review concept</button>}</p>}
             {result && 'verdict' in result && result.verdict && (
               <div className="verdict-sections">
                 {[result.verdict.formula, result.verdict.relation, result.verdict.correspondence].filter(Boolean).map((section) => section && (
@@ -1900,9 +1894,9 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
         <div className="dialog-backdrop completion-backdrop" role="presentation">
           <section className="completion-dialog" role="dialog" aria-modal="true" aria-labelledby="completion-title">
             <div className="completion-mark" aria-hidden="true">✓</div>
-            <p className="eyebrow">{campaignLevelIndex === activeLevels.length - 1 ? `${gameMode === 'tutorial' ? 'Legacy lesson set' : gameMode === 'custom' ? customSequenceLabel : 'Practice collection'} complete` : 'Objective verified'}</p>
-            <h2 id="completion-title">{campaignLevelIndex === activeLevels.length - 1 ? gameMode === 'custom' ? `${customSequenceLabel} complete` : 'Sequence complete' : 'Mission complete'}</h2>
-            <p>{courseLesson ? courseLesson.successExplanation : <><strong>{activeLevel.title}</strong> is now recorded as complete. You can continue immediately or return to the level overview.</>}</p>
+            <p className="eyebrow">{courseLesson ? 'Task complete' : campaignLevelIndex === activeLevels.length - 1 ? `${gameMode === 'tutorial' ? 'Legacy lesson set' : gameMode === 'custom' ? customSequenceLabel : 'Practice collection'} complete` : 'Objective verified'}</p>
+            <h2 id="completion-title">{courseLesson ? 'Task complete' : campaignLevelIndex === activeLevels.length - 1 ? gameMode === 'custom' ? `${customSequenceLabel} complete` : 'Sequence complete' : 'Mission complete'}</h2>
+            <p>{courseLesson ? <><strong>What this shows:</strong> {courseLesson.successExplanation}</> : <><strong>{activeLevel.title}</strong> is now recorded as complete. You can continue immediately or return to the level overview.</>}</p>
             {courseLesson?.commonMistake && <p className="completion-common-mistake"><strong>Common mistake:</strong> {courseLesson.commonMistake}</p>}
             {gameMode === 'guidedCampaign' && activeLevel.successDebrief && <p className="completion-common-mistake"><strong>Mission debrief:</strong> {activeLevel.successDebrief}</p>}
             {gameMode === 'guidedCampaign' && referenceSolutionViewed.has(activeLevel.id) && <p className="completion-common-mistake"><strong>Assisted completion:</strong> You viewed a reference construction before completing this mission.</p>}
@@ -1913,12 +1907,22 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
             <div className="completion-progress"><span>{activeLevels.filter((level) => completedLevelIds.has(level.id)).length}/{activeLevels.length} complete</span><div className="progress-meter"><i style={{ width: `${activeLevels.filter((level) => completedLevelIds.has(level.id)).length / activeLevels.length * 100}%` }} /></div></div>
             <div className="completion-actions">
               {campaignLevelIndex < activeLevels.length - 1
-                ? <button type="button" className="primary-action" autoFocus onClick={() => loadLevel(campaignLevelIndex + 1)}>Next mission</button>
-                : <button type="button" className="primary-action" autoFocus onClick={returnToGuidedBrowser}>{gameMode === 'tutorial' ? 'Back to Learn' : gameMode === 'custom' ? 'Return to sandbox' : 'Back to Practice'}</button>}
+                ? <button type="button" className="primary-action" autoFocus onClick={() => courseLesson ? startLearnLesson(campaignLevelIndex + 1) : loadLevel(campaignLevelIndex + 1)}>{courseLesson ? 'Continue to next lesson' : 'Next mission'}</button>
+                : <button type="button" className="primary-action" autoFocus onClick={courseLesson ? () => setAppView('learn') : returnToGuidedBrowser}>{courseLesson ? 'Return to lesson list' : gameMode === 'tutorial' ? 'Back to Learn' : gameMode === 'custom' ? 'Return to sandbox' : 'Back to Practice'}</button>}
               <button type="button" className="secondary-button" onClick={() => loadLevel(campaignLevelIndex)}>Replay mission</button>
-              {campaignLevelIndex < activeLevels.length - 1 && <button type="button" className="text-button" onClick={returnToGuidedBrowser}>Back to overview</button>}
+              {courseLesson ? <button type="button" className="text-button" onClick={() => { setCompletionDismissed(true); setLearnConceptOpen(true) }}>Review concept</button> : campaignLevelIndex < activeLevels.length - 1 && <button type="button" className="text-button" onClick={returnToGuidedBrowser}>Back to overview</button>}
             </div>
             <button type="button" className="completion-close" onClick={() => setCompletionDismissed(true)}>Keep exploring this model</button>
+          </section>
+        </div>
+      )}
+
+      {appView === 'workspace' && courseLesson && learnConceptOpen && (
+        <div className="dialog-backdrop concept-backdrop" role="presentation" onMouseDown={() => setLearnConceptOpen(false)}>
+          <section className="help-dialog lesson-concept-dialog" role="dialog" aria-modal="true" aria-labelledby="lesson-concept-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="dialog-heading"><div><p className="eyebrow">How to Play · Lesson {campaignLevelIndex + 1}</p><h2 id="lesson-concept-title">{courseLesson.title}</h2></div><button type="button" className="dialog-close" onClick={() => setLearnConceptOpen(false)} aria-label="Close lesson concept">×</button></div>
+            <div className="lesson-concept-grid"><article><h3>What to do</h3><p>{activeLevel?.instruction}</p></article><article><h3>How it works</h3><p>{courseLesson.concept.intuitive}</p>{courseLesson.concept.formal && <code>{courseLesson.concept.formal}</code>}<ul>{courseLesson.concept.keyPoints.map((point) => <li key={point}>{point}</li>)}</ul></article></div>
+            <button type="button" className="primary-action" autoFocus onClick={() => setLearnConceptOpen(false)}>Start task</button>
           </section>
         </div>
       )}
@@ -2042,7 +2046,7 @@ export function App({ initialView = 'home' }: { readonly initialView?: AppView }
               <div><h3>Correspondence lab</h3><p>Load standard modal axioms T, D, B, 4, and 5 to compare finite-frame validity with their corresponding frame properties.</p></div>
               <div><h3>Formula notation</h3><p>Use ¬, ∧, ∨, →, □, ◇ or the alternatives !, &amp;, |, -&gt;, box, diamond.</p></div>
               <div><h3>Storage</h3><p>Your sandbox is saved only in this browser. Reset model restores the initial example.</p></div>
-              <div><h3>Workspace</h3><p>Use the top-bar controls to undo or redo model edits, enter fullscreen, and collapse either side of the workspace. The map toolbar can fit the graph or hide derived edges.</p></div>
+              <div><h3>Workspace</h3><p>Use the model toolbar to undo or redo edits, change editing mode, manage constraints, and show derived edges. Fullscreen and panel visibility remain available in the header.</p></div>
             </div>}
             {guideTab === 'objectives' && <div className="help-grid objective-guide">
               <div><h3>Pointed objectives</h3><p>Make or refute M,w ⊨ φ at one selected world under the current valuation.</p></div>

@@ -3,10 +3,10 @@
   "private": true,
   "version": "0.1.0",
   "author": "Chrasts (https://github.com/Chrasts)",
-  "homepage": "https://chrasts.github.io/Logic_semantics_game/",
+  "homepage": "https://chrasts.github.io/Modal_Logic_Educational_Game/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Chrasts/Logic_semantics_game.git"
+    "url": "https://github.com/Chrasts/Modal_Logic_Educational_Game.git"
   },
   "type": "module",
   "scripts": {

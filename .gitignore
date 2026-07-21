@@ -7,3 +7,7 @@ coverage/
 .DS_Store
 .vscode/*
 !.vscode/extensions.json
+*.docx
+GAME_BUILDING_PLAN*.txt
+CURRENT_CODEX_TASK*
+spustit_logic_game.bat
